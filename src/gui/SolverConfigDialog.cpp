@@ -434,8 +434,27 @@ void SolverConfigDialog::patchControlDictTransient()
         rf.close();
         txt.replace(QRegularExpression(R"(adjustTimeStep\s+\w+\s*;)"), "adjustTimeStep  no;");
         txt.replace(QRegularExpression(R"(deltaT\s+[\d.eE+\-]+\s*;)"),       "deltaT          1;");
-        txt.replace(QRegularExpression(R"(endTime\s+[\d.eE+\-]+\s*;)"),      "endTime         200;");
-        txt.replace(QRegularExpression(R"(writeInterval\s+[\d.eE+\-]+\s*;)"), "writeInterval   100;");
+
+        // endTime and writeInterval are the user's iteration count, so they are
+        // only normalised when the current value looks like a leftover from a
+        // transient run (a fractional or very small number of seconds). A value
+        // of 10 or more is a deliberate iteration count and is preserved.
+        {
+            QRegularExpression etRe(R"(endTime\s+([\d.eE+\-]+)\s*;)");
+            auto m = etRe.match(txt);
+            bool ok = false;
+            const double cur = m.hasMatch() ? m.captured(1).toDouble(&ok) : 0.0;
+            if (!m.hasMatch() || (ok && cur < 10.0))
+                txt.replace(etRe, "endTime         200;");
+        }
+        {
+            QRegularExpression wiRe(R"(writeInterval\s+([\d.eE+\-]+)\s*;)");
+            auto m = wiRe.match(txt);
+            bool ok = false;
+            const double cur = m.hasMatch() ? m.captured(1).toDouble(&ok) : 0.0;
+            if (!m.hasMatch() || (ok && cur < 10.0))
+                txt.replace(wiRe, "writeInterval   100;");
+        }
         QFile wf(ctlPath);
         if (wf.open(QIODevice::WriteOnly | QIODevice::Text))
             wf.write(txt.toUtf8());
