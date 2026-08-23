@@ -1,0 +1,15 @@
+FoamFile
+{ version 2.0; format ascii; class volVectorField; object U; }
+
+dimensions [0 1 -1 0 0 0 0];
+internalField uniform (10 0 0);
+boundaryField
+{
+    inlet   { type fixedValue; value uniform (10 0 0); }
+    outlet  { type zeroGradient; }
+    sphere { type noSlip; }
+    top     { type symmetryPlane; }
+    bottom  { type symmetryPlane; }
+    front   { type symmetryPlane; }
+    back    { type symmetryPlane; }
+}

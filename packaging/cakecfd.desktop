@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=CakeCFD
+Comment=CFD platform with OpenFOAM solver backend
+Exec=CFDStudio
+Icon=cakecfd
+Type=Application
+Categories=Science;Engineering;
+Terminal=false

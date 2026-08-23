@@ -1,0 +1,85 @@
+/*---------------------------------------------------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2412                                  |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+Build  : _b8cf4d35-20260127 OPENFOAM=2412 patch=260127 version=2412
+Arch   : "LSB;label=32;scalar=64"
+Exec   : surfaceFeatureExtract
+Date   : Aug 06 2026
+Time   : 08:53:03
+Host   : LAPTOP-03LJQBV4
+PID    : 32702
+I/O    : uncollated
+Case   : /path/to/CFD_development/tests/mesh_pipeline_test/of_case
+nProcs : 1
+trapFpe: Floating point exception trapping enabled (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 5, maxFileModificationPolls 20)
+allowSystemOperations : Allowing user-supplied system call operations
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
+
+
+Note: Feature line extraction only valid on closed manifold surfaces
+
+Reading surfaceFeatureExtractDict
+
+Surfaces     : sphere.stl
+Output       : sphere
+Load options : offset
+Write options: writeObj=yes writeVTK=off
+
+Statistics:
+Triangles    : 648 in 1 region(s)
+Vertices     : 325
+Bounding Box : (-0.49635443 -0.49635443 -0.5) (0.5 0.49635443 0.5)
+
+Constructing feature set from included angle 150
+Selecting edges based purely on geometric tests: no
+
+Initial Feature set:
+    points : 3
+    edges  : 12
+    of which
+        region edges   : 6
+        external edges : 6
+        internal edges : 0
+
+Final Feature set:
+    points : 13
+    of which
+        convex             : 1
+        concave            : 0
+        mixed              : 2
+        non-feature        : 10
+    edges  : 12
+    of which
+        external edges     : 6
+        internal edges     : 0
+        flat edges         : 0
+        open edges         : 2
+        multiply connected : 4
+
+Writing extendedFeatureEdgeMesh to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere.extendedFeatureEdgeMesh"
+
+Writing extendedEdgeMesh components to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere"
+Writing 1 convex feature points to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere_convexFeaturePts.obj"
+Writing 0 concave feature points to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere_concaveFeaturePts.obj"
+Writing 2 mixed feature points to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere_mixedFeaturePts.obj"
+Writing 2 mixed feature point structure to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere_mixedFeaturePtsStructure.obj"
+Writing 6 external edges to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere_externalEdges.obj"
+Writing 0 internal edges to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere_internalEdges.obj"
+Writing 0 flat edges to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere_flatEdges.obj"
+Writing 2 open edges to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere_openEdges.obj"
+Writing 4 multiple edges to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere_multipleEdges.obj"
+Writing 6 region edges to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere_regionEdges.obj"
+Writing 12 edge directions to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/extendedFeatureEdgeMesh/sphere_edgeDirections.obj"
+
+Writing featureEdgeMesh to "/path/to/CFD_development/tests/mesh_pipeline_test/of_case/constant/triSurface/sphere.eMesh"
+ExecutionTime = 0.01 s  ClockTime = 0 s
+
+End
+

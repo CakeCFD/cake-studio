@@ -1,0 +1,31 @@
+FoamFile
+{ version 2.0; format ascii; class dictionary; object controlDict; }
+
+application     simpleFoam;
+startFrom       latestTime;
+startTime       0;
+stopAt          endTime;
+endTime         1000;
+deltaT          1;
+writeControl    timeStep;
+writeInterval   100;
+purgeWrite      3;
+writeFormat     ascii;
+writePrecision  8;
+runTimeModifiable true;
+
+libs ( "libtenoScheme.so" );
+
+functions
+{
+    forces
+    {
+        type            forces;
+        libs            (forces);
+        patches         (sphere);
+        rhoInf          1.225;
+        CofR            (0 0 0);
+        writeControl    timeStep;
+        writeInterval   10;
+    }
+}

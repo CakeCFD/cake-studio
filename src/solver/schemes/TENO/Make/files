@@ -1,0 +1,5 @@
+﻿TenoStencilCache.C
+tenoScheme.C
+teno6Scheme.C
+
+LIB = $(FOAM_USER_LIBBIN)/libtenoScheme

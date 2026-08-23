@@ -1,0 +1,1 @@
+add_subdirectory(mesh_pipeline_test)

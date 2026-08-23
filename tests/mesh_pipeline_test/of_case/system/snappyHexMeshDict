@@ -1,0 +1,99 @@
+FoamFile
+{ version 2.0; format ascii; class dictionary; object snappyHexMeshDict; }
+
+castellatedMesh true;
+snap true;
+addLayers true;
+
+geometry
+{
+    sphere
+    {
+        type triSurfaceMesh;
+        file "sphere.stl";
+    }
+};
+
+castellatedMeshControls
+{
+    maxGlobalCells       2000000;
+    maxLocalCells        100000;
+    minRefinementCells   10;
+    nCellsBetweenLevels  3;
+    resolveFeatureAngle  30;
+    features
+    (
+        { file "sphere.eMesh"; level 2; }
+    );
+    refinementSurfaces
+    {
+        sphere
+        {
+            level (2 3);
+            patchInfo { type wall; }
+        }
+    }
+    refinementRegions {}
+    locationInMesh (-2.8 0 0);
+    allowFreeStandingZoneFaces true;
+}
+
+snapControls
+{
+    nSmoothPatch  3;
+    tolerance     2;
+    nSolveIter    30;
+    nRelaxIter    5;
+    nFeatureSnapIter 10;
+    implicitFeatureSnap false;
+    explicitFeatureSnap true;
+    multiRegionFeatureSnap false;
+}
+
+addLayersControls
+{
+    relativeSizes true;
+    layers
+    {
+        sphere { nSurfaceLayers 2; }
+    }
+    expansionRatio          1.2;
+    firstLayerThickness     0.3;
+    minThickness            0.1;
+    nGrow                   0;
+    featureAngle            60;
+    slipFeatureAngle        30;
+    nRelaxIter              5;
+    nRelaxedIter            10;
+    nSmoothSurfaceNormals   10;
+    nSmoothNormals          3;
+    nSmoothThickness        10;
+    maxFaceThicknessRatio   0.5;
+    maxThicknessToMedialRatio 0.3;
+    minMedialAxisAngle      90;
+    nMedialAxisIter         10;
+    nBufferCellsNoExtrude   0;
+    nLayerIter              50;
+}
+
+meshQualityControls
+{
+    maxNonOrtho 65;
+    maxBoundarySkewness 20;
+    maxInternalSkewness 4;
+    maxConcave 80;
+    minVol 1e-13;
+    minTetQuality 1e-15;
+    minArea -1;
+    minTwist 0.02;
+    minDeterminant 0.001;
+    minFaceWeight 0.05;
+    minVolRatio 0.01;
+    minTriangleTwist -1;
+    nSmoothScale 4;
+    errorReduction 0.75;
+    relaxed { maxNonOrtho 75; }
+}
+
+debug 0;
+mergeTolerance 1e-6;

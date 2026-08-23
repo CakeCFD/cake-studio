@@ -1,0 +1,19 @@
+FoamFile
+{ version 2.0; format ascii; class dictionary; object fvSchemes; }
+
+ddtSchemes    { default Euler; }
+gradSchemes   { default Gauss linear; }
+divSchemes
+{
+    default         Gauss teno;
+    div(phi,U)      Gauss teno;
+    div(phi,k)      Gauss teno;
+    div(phi,omega)  Gauss teno;
+    div(phi,epsilon) Gauss teno;
+    div(phi,nuTilda) Gauss teno;
+    div((nuEff*dev(T(grad(U))))) Gauss linear;
+}
+laplacianSchemes { default Gauss linear corrected; }
+interpolationSchemes { default linear; }
+snGradSchemes { default corrected; }
+fluxRequired { default no; p; }

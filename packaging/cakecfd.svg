@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Background -->
+  <rect width="256" height="256" rx="32" fill="#1e1e2e"/>
+
+  <!-- Streamlines / flow field -->
+  <path d="M 20 100 Q 80 70 128 100 Q 176 130 236 100" fill="none" stroke="#89b4fa" stroke-width="3" opacity="0.6"/>
+  <path d="M 20 128 Q 80 98 128 128 Q 176 158 236 128" fill="none" stroke="#89b4fa" stroke-width="3.5" opacity="0.8"/>
+  <path d="M 20 156 Q 80 126 128 156 Q 176 186 236 156" fill="none" stroke="#89b4fa" stroke-width="3" opacity="0.6"/>
+
+  <!-- Bluff body (circle obstacle) -->
+  <circle cx="128" cy="128" r="36" fill="#313244" stroke="#cba6f7" stroke-width="3"/>
+
+  <!-- Pressure contours around body -->
+  <path d="M 128 80 A 48 48 0 0 1 176 128 A 48 48 0 0 1 128 176 A 48 48 0 0 1 80 128 A 48 48 0 0 1 128 80"
+        fill="none" stroke="#f38ba8" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.7"/>
+  <path d="M 128 64 A 64 64 0 0 1 192 128 A 64 64 0 0 1 128 192 A 64 64 0 0 1 64 128 A 64 64 0 0 1 128 64"
+        fill="none" stroke="#fab387" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.5"/>
+
+  <!-- "C" lettermark -->
+  <text x="128" y="138" font-family="serif" font-size="32" font-weight="bold"
+        fill="#cdd6f4" text-anchor="middle" dominant-baseline="middle">C</text>
+</svg>

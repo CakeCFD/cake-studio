@@ -1,0 +1,35 @@
+# CakeCFD - example config
+# Run from project root:
+#   ./build/src/cli/cfdstudio --config examples/sphere.yaml
+#   ./build/src/cli/cfdstudio --config examples/sphere.yaml --json
+
+geometry:
+  file: tests/mesh_pipeline_test/sphere.brep   # path relative to project root
+
+case:
+  name: sphere_demo
+  output_dir: runs
+
+solver:
+  type: simpleFoam
+  turbulence: kOmegaSST
+  inflow_velocity: 10.0
+  nu: 1.5e-5
+
+mesh:
+  padding: 3.0
+  background_cells: 20
+  max_global_cells: 2000000
+  max_local_cells: 100000
+  surface_refinement_min: 2
+  surface_refinement_max: 3
+  resolve_feature_angle: 30
+  boundary_layers: 2
+  layer_expansion_ratio: 1.2
+  first_layer_thickness: 0.3
+  min_thickness: 0.1
+
+run:
+  mesh: true
+  solver: false
+  cores: 4
