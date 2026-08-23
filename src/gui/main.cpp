@@ -24,12 +24,14 @@
 #include "themes/ThemeEngine.h"
 
 int main(int argc, char* argv[]) {
-    // WSLg ships both the d3d12 Mesa driver (real GPU via /dev/dxg) and llvmpipe
-    // (CPU). Driver auto-selection frequently lands on llvmpipe, which makes camera
-    // interaction crawl no matter how cheap the scene is. Pin d3d12 when the WSL GPU
+    // WSLg ships both the d3d12 Mesa driver (real GPU through /dev/dxg) and
+    // llvmpipe (CPU rasteriser). Auto-selection lands on llvmpipe, which reports
+    // "Accelerated: no" and makes the whole interface stutter, not just the 3D
+    // viewport. d3d12 is a Gallium driver, so it is selected with GALLIUM_DRIVER;
+    // MESA_LOADER_DRIVER_OVERRIDE does not reach it. Pin it when the WSL GPU
     // device is present and the user has not chosen a driver themselves.
-    if (QFile::exists("/dev/dxg") && qEnvironmentVariableIsEmpty("MESA_LOADER_DRIVER_OVERRIDE"))
-        qputenv("MESA_LOADER_DRIVER_OVERRIDE", "d3d12");
+    if (QFile::exists("/dev/dxg") && qEnvironmentVariableIsEmpty("GALLIUM_DRIVER"))
+        qputenv("GALLIUM_DRIVER", "d3d12");
     // Must be set before QApplication so all GL surfaces inherit it.
     // No MSAA (samples=0) is the single biggest rendering speedup on WSLg :
     // default multisampling forces the GPU to render every frame 4-8x over.
