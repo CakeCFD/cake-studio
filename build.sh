@@ -185,7 +185,7 @@ fi
 # Summary
 printf '\n%sDone.%s\n' "$GREEN$BOLD" "$RESET"
 if (( DO_APP )); then
-    printf '  run:  %s%s/src/gui/CFDStudio%s\n' "$BOLD" "$BUILD_DIR" "$RESET"
+    printf '  run:  %s%s/run.sh%s\n' "$BOLD" "$ROOT" "$RESET"
 fi
 if (( DO_TENO )); then
     printf '  use:  %sdiv(phi,U) Gauss teno;%s  in system/fvSchemes\n' "$BOLD" "$RESET"
