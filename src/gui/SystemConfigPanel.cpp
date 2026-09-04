@@ -34,6 +34,10 @@
 #include <QFontMetrics>
 #include <QSizePolicy>
 
+// Defined below; declared here because the constructor writes controlDict when
+// a spinbox finishes editing.
+static bool writeDictVal(const QString& path, const QString& key, const QString& value);
+
 static QFrame* makeSep()
 {
     auto* f = new QFrame;
@@ -130,6 +134,18 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
     connect(m_stepsSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, [this](double v){ emit stepsChanged(static_cast<int>(v)); });
 
+    // Persist as soon as the user finishes editing. Anything that rewrites
+    // controlDict (the solver config dialog, for one) triggers a refresh that
+    // reloads these spinboxes from the file, so a value that was only sitting in
+    // the widget would be silently replaced by the stale one on disk.
+    // editingFinished fires on user input only, not on programmatic setValue,
+    // so this cannot feed back into the refresh.
+    connect(m_stepsSpin, &QAbstractSpinBox::editingFinished, this, [this]() {
+        if (m_caseDir.isEmpty()) return;
+        writeDictVal(m_caseDir + "/system/controlDict", "endTime",
+                     QString::number(m_stepsSpin->value(), 'g', 6));
+    });
+
     auto* writeEveryLbl = new QLabel("Save every:");
     writeEveryLbl->setStyleSheet("font-size:11px;");
     lay->addWidget(writeEveryLbl);
@@ -140,6 +156,12 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
     m_writeEvery->setFixedWidth(64);
     m_writeEvery->setToolTip("controlDict writeInterval: write a result snapshot every N steps");
     lay->addWidget(m_writeEvery);
+
+    connect(m_writeEvery, &QAbstractSpinBox::editingFinished, this, [this]() {
+        if (m_caseDir.isEmpty()) return;
+        writeDictVal(m_caseDir + "/system/controlDict", "writeInterval",
+                     QString::number(m_writeEvery->value()));
+    });
 
     connect(m_methodCombo, &QComboBox::currentTextChanged, this,
             [this](const QString& m) {
