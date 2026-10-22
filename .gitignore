@@ -39,3 +39,6 @@ lnInclude/
 
 # Validation run output
 validation/cases/**/work/
+
+# Windows installer build output
+packaging/windows/dist/

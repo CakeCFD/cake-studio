@@ -1,12 +1,5 @@
-// Windows launcher for CakeStudio: starts the Linux build inside WSL2 (WSLg
-// provides the display) without leaving a console window open.
-//
-// Build with the .NET Framework compiler that ships with Windows:
-//   C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe
-//     /win32icon:CakeStudio.ico /out:CakeStudio.exe CakeStudioLauncher.cs
-//
-// The app path inside WSL defaults to ~/CFD_development/build/src/gui/CFDStudio
-// and can be overridden with the CAKESTUDIO_PATH environment variable (a Linux path).
+// Starts CakeStudio inside WSL2 without a console window. Built by build-setup.cmd.
+// App path: CAKESTUDIO_PATH, the installed copy, then ~/CFD_development; CakeStudio.distro picks the distro.
 
 using System;
 using System.Diagnostics;
@@ -29,14 +22,25 @@ static class CakeStudioLauncher
             return 1;
         }
 
+        // Prefer the copy installed by Setup, then a source build in ~/CFD_development
         string appPath = Environment.GetEnvironmentVariable("CAKESTUDIO_PATH");
-        if (string.IsNullOrEmpty(appPath))
-            appPath = "$HOME/CFD_development/build/src/gui/CFDStudio";
+        string pick = string.IsNullOrEmpty(appPath)
+            ? "app=\"$HOME/.local/share/cakestudio/current/bin/CFDStudio\"; " +
+              "[ -x \"$app\" ] || app=\"$HOME/CFD_development/build/src/gui/CFDStudio\"; "
+            : "app=\"" + appPath + "\"; ";
 
-        // Report a missing binary with exit code 127 so we can explain it below.
-        // The app's own output goes to a log file: once this launcher exits its
-        // stderr pipe closes, and writing to it would kill the app with SIGPIPE.
-        string script = "app=\"" + appPath + "\"; " +
+        // Setup records which WSL distribution it installed into
+        string distroArg = "";
+        string distroFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CakeStudio.distro");
+        if (File.Exists(distroFile))
+        {
+            string distro = File.ReadAllText(distroFile).Trim();
+            if (distro.Length > 0) distroArg = "-d " + distro + " ";
+        }
+
+        // Exit 127 flags a missing binary. App output goes to a log: our stderr pipe closes
+        // when the launcher exits, and writing to it would kill the app with SIGPIPE.
+        string script = pick +
                         "[ -x \"$app\" ] || { echo \"Not found: $app\" >&2; exit 127; }; " +
                         "export DISPLAY=\"${DISPLAY:-:0}\"; " +
                         "log=\"${XDG_STATE_HOME:-$HOME/.local/state}/cakestudio\"; mkdir -p \"$log\"; " +
@@ -46,7 +50,7 @@ static class CakeStudioLauncher
         {
             FileName = wsl,
             // Windows argument parsing only understands double quotes, escaped as \"
-            Arguments = "-e bash -lc \"" + script.Replace("\"", "\\\"") + "\"",
+            Arguments = distroArg + "-e bash -lc \"" + script.Replace("\"", "\\\"") + "\"",
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardError = true,
