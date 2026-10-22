@@ -18,6 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "DomainSetupDialog.h"
+#include "themes/ThemeEngine.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -249,10 +250,8 @@ DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
     auto* notNow  = new QPushButton("Not Now", this);
     auto* generate = new QPushButton("Generate Files", this);
     generate->setDefault(true);
-    generate->setStyleSheet(
-        "QPushButton { background:#f5c500; color:#1a1a1a; font-weight:bold; "
-        "padding:6px 16px; border-radius:3px; }"
-        "QPushButton:hover { background:#ffd740; }");
+    ThemeEngine::setRole(generate, "primary");
+    generate->setStyleSheet("QPushButton { padding:6px 16px; }");
     btnRow->addWidget(notNow);
     btnRow->addStretch();
     btnRow->addWidget(generate);

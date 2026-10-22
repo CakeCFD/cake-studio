@@ -56,7 +56,7 @@ int main(int argc, char* argv[]) {
     app.setApplicationName("Cake Studio");
     app.setOrganizationName("CFDStudio");
 
-    ThemeEngine::instance().apply(Theme::Dark, app);
+    ThemeEngine::instance().apply(Theme::Graphite, app);
 
     MainWindow window;
     window.show();

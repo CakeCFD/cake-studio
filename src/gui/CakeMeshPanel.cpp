@@ -18,6 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "FileBrowserDialog.h"
+#include "themes/ThemeEngine.h"
 #include <QDir>
 #include <QFileInfo>
 #include "CakeMeshPanel.h"
@@ -96,16 +97,12 @@ CakeMeshPanel::CakeMeshPanel(QWidget* parent) : QWidget(parent)
     m_btnExport   = new QPushButton("Export to Cake Studio");
     m_btnRunMesh->setEnabled(false);
     m_btnExport->setEnabled(false);
-    m_btnExport->setStyleSheet(
-        "QPushButton:enabled { background:#a6e3a1; color:#1e1e2e; font-weight:bold; }");
+    ThemeEngine::setRole(m_btnExport, "primary");
 
-    auto makeCopyBtn = [this](const QString& label, const QString& color,
+    auto makeCopyBtn = [this](const QString& label, const QString& role,
                                const QStringList& keywords) {
         auto* btn = new QPushButton(label);
-        btn->setStyleSheet(QString(
-            "QPushButton { font-size:10px; padding:2px 6px; color:%1; border:1px solid %1; "
-            "border-radius:3px; background:transparent; }"
-            "QPushButton:hover { background:%1; color:palette(button-text); }").arg(color));
+        ThemeEngine::setRole(btn, role);
         connect(btn, &QPushButton::clicked, this, [this, keywords, btn]() {
             QStringList lines = m_log->toPlainText().split('\n');
             QStringList blocks;
@@ -144,9 +141,9 @@ CakeMeshPanel::CakeMeshPanel(QWidget* parent) : QWidget(parent)
         return btn;
     };
 
-    auto* copyWarnBtn = makeCopyBtn("⚠ Copy Warnings", "#f9e2af",
+    auto* copyWarnBtn = makeCopyBtn("⚠ Copy Warnings", "copyWarn",
                                     {"Warning", "WARNING", "WARN", "warning"});
-    auto* copyErrBtn  = makeCopyBtn("✕ Copy Errors",   "#f38ba8",
+    auto* copyErrBtn  = makeCopyBtn("✕ Copy Errors",   "copyErr",
                                     {"Error", "ERROR", "FATAL", "FAILED", "error:", "fatal"});
 
     auto* bar = new QHBoxLayout;
@@ -461,12 +458,8 @@ void CakeMeshPanel::buildBCTable()
         w->setFont(f);
     };
 
-    // Row tints must be DESATURATED explicitly. Two hue-preserving approaches failed
-    // here: QColor::lighter() scales HSL lightness but keeps hue, and blending toward
-    // QPalette::Text keeps hue too because this theme's text (#cdd6f4) is itself
-    // blue-lavender. Either way a near-black blue-tinted background (#1e1e2e) turns
-    // into a saturated navy band. Build the tint from lightness alone (saturation 0)
-    // so it reads as a neutral grey lift under any palette.
+    // Row tints are built from lightness alone (saturation 0): hue-preserving tints
+    // turn a blue-tinted background into a saturated band.
     const QColor kWin  = m_bcTable->palette().color(QPalette::Window);
     const QColor kBase = m_bcTable->palette().color(QPalette::Base);
     const QColor kTxt  = m_bcTable->palette().color(QPalette::Text);
@@ -594,7 +587,7 @@ void CakeMeshPanel::onLoadGeometry()
 
     auto geo = CFD::CADGeometry::fromFile(path);
     if (!geo->isValid()) {
-        m_geoStats->setText("<b style='color:#f38ba8'>Failed:</b> " + geo->importResult().errorMsg);
+        m_geoStats->setText("<b style='color:" + ThemeEngine::instance().colors().danger.name() + "'>Failed:</b> " + geo->importResult().errorMsg);
         m_status->setText("Load failed.");
         return;
     }

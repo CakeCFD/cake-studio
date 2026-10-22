@@ -18,6 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "PhysicsPanel.h"
+#include "themes/ThemeEngine.h"
 #include "CitationManager.h"
 #include <QJsonObject>
 #include <QVBoxLayout>
@@ -62,7 +63,8 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
 
     m_thermalNote = new QLabel(
         "Thermal solver: also configure Physics → Thermal Properties");
-    m_thermalNote->setStyleSheet("color: #f5c500; font-size: 11px;");
+    m_thermalNote->setStyleSheet("font-size: 11px;");
+    ThemeEngine::setRole(m_thermalNote, "warnText");
     m_thermalNote->setWordWrap(true);
     m_thermalNote->hide();
     solverForm->addRow("", m_thermalNote);
@@ -180,7 +182,8 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
     reLayout->addRow("A_ref (m²):", m_arefSpin);
 
     m_reLabel = new QLabel("-");
-    m_reLabel->setStyleSheet("font-weight: bold; font-size: 14px; color: #64b5f6;");
+    m_reLabel->setStyleSheet("font-weight: bold; font-size: 14px;");
+    ThemeEngine::setRole(m_reLabel, "accentText");
     reLayout->addRow("Re:", m_reLabel);
     root->addWidget(reGroup);
 

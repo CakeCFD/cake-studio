@@ -54,15 +54,10 @@ struct TC {
 };
 
 static TC tc() {
-    if (ThemeEngine::instance().current() == Theme::Dark) {
-        return { "#89b4fa", "#6c7086", "#cdd6f4", "#585b70",
-                 "#313244", "#1e1e2e", "#b4d0fa",
-                 "#12121c", "#a6e3a1", "#f38ba8" };
-    } else { // Blueprint
-        return { "#f5c500", "#888888", "#e0e0e0", "#666666",
-                 "#3a3a3a", "#1f1f1f", "#ffd740",
-                 "#1f1f1f", "#4caf50", "#ef5350" };
-    }
+    const ThemeColors& c = ThemeEngine::instance().colors();
+    return { c.accent.name(), c.textMuted.name(), c.text.name(), c.textDim.name(),
+             c.border.name(), c.onAccent.name(), c.accentHover.name(),
+             c.base.name(), c.success.name(), c.danger.name() };
 }
 
 // file helpers

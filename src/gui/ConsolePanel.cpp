@@ -131,40 +131,27 @@ void ConsolePanel::setupUI() {
     m_solverBanner = new QFrame;
     m_solverBanner->setFrameShape(QFrame::StyledPanel);
     m_solverBanner->setObjectName("solverBanner");
-    m_solverBanner->setStyleSheet(
-        "QFrame#solverBanner {"
-        "  background: #3d3000;"
-        "  border: 1px solid #a87d00;"
-        "  border-radius: 4px;"
-        "  padding: 0px;"
-        "}");
+    ThemeEngine::setRole(m_solverBanner, "warnBanner");
     {
         auto* bl = new QHBoxLayout(m_solverBanner);
         bl->setContentsMargins(8, 5, 8, 5);
         bl->setSpacing(8);
 
         auto* icon = new QLabel("⚠");
-        icon->setStyleSheet("color:#f9e2af; font-size:14px;");
+        icon->setStyleSheet("font-size:14px;");
         icon->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
         m_bannerLabel = new QLabel;
-        m_bannerLabel->setStyleSheet("color:#f9e2af; font-size:11px;");
+        m_bannerLabel->setStyleSheet("font-size:11px;");
         m_bannerLabel->setWordWrap(false);
 
         auto* openBtn = new QPushButton("Open Solver Config");
-        openBtn->setStyleSheet(
-            "QPushButton { font-size:10px; padding:2px 10px;"
-            "  color:#f9e2af; border:1px solid #a87d00;"
-            "  border-radius:3px; background:transparent; }"
-            "QPushButton:hover { background:#a87d00; color:#1e1e2e; }");
         openBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         connect(openBtn, &QPushButton::clicked, m_solverConfigBtn, &QPushButton::click);
 
         auto* dismissBtn = new QPushButton("✕");
         dismissBtn->setFixedSize(20, 20);
-        dismissBtn->setStyleSheet(
-            "QPushButton { font-size:10px; color:#a87d00; border:none; background:transparent; }"
-            "QPushButton:hover { color:#f9e2af; }");
+        dismissBtn->setStyleSheet("QPushButton { border:none; padding:0; }");
         connect(dismissBtn, &QPushButton::clicked, this, &ConsolePanel::hideSolverBanner);
 
         bl->addWidget(icon);
@@ -210,14 +197,11 @@ void ConsolePanel::setupUI() {
     auto* runCmdBtn = new QPushButton("Run");
     runCmdBtn->setFixedWidth(48);
 
-    auto makeCopyBtn = [this](const QString& label, const QString& color,
+    auto makeCopyBtn = [this](const QString& label, const QString& role,
                                const QStringList& keywords) {
         auto* btn = new QPushButton(label);
         btn->setFixedWidth(110);
-        btn->setStyleSheet(QString(
-            "QPushButton { font-size:10px; padding:2px 6px; color:%1; border:1px solid %1; "
-            "border-radius:3px; background:transparent; }"
-            "QPushButton:hover { background:%1; color:#1e1e2e; }").arg(color));
+        ThemeEngine::setRole(btn, role);
         connect(btn, &QPushButton::clicked, this, [this, keywords, btn]() {
             // Capture full blocks: from the matching line until the next blank line,
             // so multi-line FOAM errors are copied in their entirety.
@@ -258,9 +242,9 @@ void ConsolePanel::setupUI() {
         return btn;
     };
 
-    auto* copyWarnBtn = makeCopyBtn("⚠ Copy Warnings", "#f9e2af",
+    auto* copyWarnBtn = makeCopyBtn("⚠ Copy Warnings", "copyWarn",
                                     {"Warning", "WARNING", "WARN", "warning"});
-    auto* copyErrBtn  = makeCopyBtn("✕ Copy Errors",   "#f38ba8",
+    auto* copyErrBtn  = makeCopyBtn("✕ Copy Errors",   "copyErr",
                                     {"Error", "ERROR", "FATAL", "FAILED", "error:", "fatal"});
 
     // Completer with OF commands

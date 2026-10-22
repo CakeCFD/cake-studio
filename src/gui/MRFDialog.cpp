@@ -18,6 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "MRFDialog.h"
+#include "themes/ThemeEngine.h"
 #include "BCEditorDialog.h"   // OFDict scanner
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -115,7 +116,8 @@ MRFDialog::MRFDialog(const QString& caseDir, QWidget* parent)
         "ℹ  The cell zone must be created during meshing\n"
         "   (snappyHexMesh refinementRegions to cellZone).\n"
         "   Positive RPM = right-hand rule about axis.");
-    hint->setStyleSheet("color: #6c7086; font-size: 11px;");
+    hint->setStyleSheet("font-size: 11px;");
+    ThemeEngine::setRole(hint, "muted");
     hint->setWordWrap(true);
 
     rightCol->addWidget(m_detailBox);
@@ -128,7 +130,8 @@ MRFDialog::MRFDialog(const QString& caseDir, QWidget* parent)
     outer->addLayout(root);
 
     m_status = new QLabel;
-    m_status->setStyleSheet("color: #6c7086; font-size: 11px; padding: 2px;");
+    m_status->setStyleSheet("font-size: 11px; padding: 2px;");
+    ThemeEngine::setRole(m_status, "muted");
     outer->addWidget(m_status);
 
     auto* btns = new QHBoxLayout;

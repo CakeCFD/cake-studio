@@ -18,6 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "MeshQualityDialog.h"
+#include "themes/ThemeEngine.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -40,7 +41,7 @@ MeshQualityDialog::MeshQualityDialog(const QString& caseDir, QWidget* parent)
 
     m_status = new QLabel("Click 'Run checkMesh' to analyse the mesh.");
     m_status->setStyleSheet(
-        "padding:5px 8px; background:#181825; border-radius:4px; color:#cdd6f4;");
+        "padding:5px 8px; background:palette(alternate-base); border-radius:4px;");
     root->addWidget(m_status);
 
     m_progress = new QProgressBar;
@@ -141,9 +142,11 @@ void MeshQualityDialog::onFinished(int code)
         ? (meshOK ? "checkMesh: Mesh OK; no issues found."
                   : "checkMesh completed: review warnings above.")
         : "checkMesh finished with errors: see log below.");
+    const ThemeColors& tc = ThemeEngine::instance().colors();
+    const QColor tone = meshOK ? tc.success : (code == 0 ? tc.warning : tc.danger);
     m_status->setStyleSheet(QString(
-        "padding:5px 8px; border-radius:4px; color:#cdd6f4; background:%1;")
-        .arg(meshOK ? "#1e3a1e" : (code == 0 ? "#3a300a" : "#3a1010")));
+        "padding:5px 8px; border-radius:4px; border:1px solid %1; background:rgba(%2,%3,%4,40);")
+        .arg(tone.name()).arg(tone.red()).arg(tone.green()).arg(tone.blue()));
 }
 
 double MeshQualityDialog::extractDouble(const QString& text, const QString& pattern)

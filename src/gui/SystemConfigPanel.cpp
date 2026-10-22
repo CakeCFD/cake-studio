@@ -266,24 +266,20 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
 
 void SystemConfigPanel::onThemeChanged()
 {
-    bool bp = (ThemeEngine::instance().current() == Theme::Blueprint);
+    const ThemeColors& c = ThemeEngine::instance().colors();
 
     // Outer panel matches the main window background: the block floats inside it
-    setStyleSheet(bp ? "SystemConfigPanel { background:#2b2b2b; }"
-                     : "SystemConfigPanel { background:#1e1e2e; }");
+    setStyleSheet(QString("SystemConfigPanel { background:%1; }").arg(c.window.name()));
 
     if (m_block) {
-        m_block->setStyleSheet(bp
-            ? "QFrame { background:#3a3a3a; border:1px solid #555; border-radius:4px; }"
-              "QLabel { background:transparent; border:none; }"
-            : "QFrame { background:#313244; border:1px solid #45475a; border-radius:4px; }"
-              "QLabel { background:transparent; border:none; }");
+        m_block->setStyleSheet(QString(
+            "QFrame { background:%1; border:1px solid %2; border-radius:4px; }"
+            "QLabel { background:transparent; border:none; }")
+            .arg(c.raised.name(), c.border.name()));
     }
 
-    if (m_gpuLabel && !m_gpus.isEmpty()) {
-        QString accent = bp ? "#f5c500" : "#a6e3a1";
-        m_gpuLabel->setStyleSheet(QString("font-size:12px; color:%1;").arg(accent));
-    }
+    if (m_gpuLabel && !m_gpus.isEmpty())
+        m_gpuLabel->setStyleSheet(QString("font-size:12px; color:%1;").arg(c.success.name()));
 }
 
 void SystemConfigPanel::detect()

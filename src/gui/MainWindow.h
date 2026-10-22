@@ -30,6 +30,7 @@
 #include <QTimer>
 #include <QPropertyAnimation>
 #include "themes/ThemeEngine.h"
+class QActionGroup;
 
 class ConsolePanel;
 class DatasetPanel;
@@ -79,6 +80,9 @@ private:
     bool saveProject(const QString& path);
     void updateTitle();
     void markDirty();
+    // Applies a theme everywhere, ticks it in View > Theme and remembers it
+    void applyTheme(Theme theme);
+    QActionGroup* m_themeGroup = nullptr;
     void addRecentProject(const QString& path);
     void rebuildRecentMenu();
 

@@ -72,17 +72,20 @@ QColor ResidualPlot::colorForField(const QString&) {
     return SERIES_COLORS[m_colorIdx++ % N];
 }
 
+// Pastel series colours suit dark plots; darken them on light ones
+static QColor onTheme(const QColor& c, Theme t) {
+    return ThemeEngine::colorsFor(t).light ? c.darker(165) : c;
+}
+
 void ResidualPlot::paintEvent(QPaintEvent*) {
     // Theme-aware palette
-    const bool blueprint =(m_theme == Theme::Blueprint);
-    const QColor bgColor      = blueprint ? QColor(0x1f, 0x1f, 0x1f) : QColor(0x16, 0x16, 0x22);
-    const QColor gridColor    = blueprint ? QColor(0x3a, 0x3a, 0x3a) : QColor(0x30, 0x30, 0x44);
-    const QColor axisColor    = blueprint ? QColor(0x88, 0x88, 0x88) : QColor(0x88, 0x88, 0x99);
-    const QColor borderColor  = blueprint ? QColor(0x44, 0x44, 0x44) : QColor(0x55, 0x55, 0x66);
-    const QColor legendBg     = blueprint ? QColor(0x2b, 0x2b, 0x2b, 200) : QColor(0x16, 0x16, 0x22, 200);
-    const QColor legendBorder = blueprint ? QColor(0x55, 0x55, 0x55) : QColor(0x33, 0x33, 0x44);
-    // Store in members so draw helpers can use them
-    // (pass via paint-local struct instead)
+    const ThemeColors c = ThemeEngine::colorsFor(m_theme);
+    const QColor bgColor      = c.plotBg;
+    const QColor gridColor    = c.plotGrid;
+    const QColor axisColor    = c.textMuted;
+    const QColor borderColor  = c.borderStrong;
+    const QColor legendBg     = QColor(c.plotBg.red(), c.plotBg.green(), c.plotBg.blue(), 210);
+    const QColor legendBorder = c.border;
     struct Pal { QColor bg, grid, axis, border, legBg, legBdr; };
     Pal pal{bgColor, gridColor, axisColor, borderColor, legendBg, legendBorder};
 
@@ -126,7 +129,7 @@ void ResidualPlot::paintEvent(QPaintEvent*) {
 void ResidualPlot::drawGrid(QPainter& p, const QRectF& plot,
                              double yMin, double yMax) const
 {
-    QColor gc = (m_theme == Theme::Blueprint) ? QColor(0x3a,0x3a,0x3a) : QColor(0x30,0x30,0x44);
+    QColor gc = ThemeEngine::colorsFor(m_theme).plotGrid;
     p.setPen(QPen(gc, 1, Qt::DotLine));
     int iMin = (int)std::floor(yMin), iMax = (int)std::ceil(yMax);
     for (int decade = iMin; decade <= iMax; ++decade) {
@@ -140,9 +143,9 @@ void ResidualPlot::drawGrid(QPainter& p, const QRectF& plot,
 void ResidualPlot::drawAxes(QPainter& p, const QRectF& plot,
                               double yMin, double yMax) const
 {
-    const bool blueprint =(m_theme == Theme::Blueprint);
-    QColor axCol = blueprint ? QColor(0x88,0x88,0x88) : QColor(0x88,0x88,0x99);
-    QColor brCol = blueprint ? QColor(0x44,0x44,0x44) : QColor(0x55,0x55,0x66);
+    const ThemeColors c = ThemeEngine::colorsFor(m_theme);
+    QColor axCol = c.textMuted;
+    QColor brCol = c.borderStrong;
 
     p.setPen(axCol);
     QFont f = font(); f.setPointSize(7); p.setFont(f);
@@ -179,7 +182,7 @@ void ResidualPlot::drawSeries(QPainter& p, const QRectF& plot,
     for (auto it = m_series.cbegin(); it != m_series.cend(); ++it) {
         const Series& s = it.value();
         if (s.values.isEmpty()) continue;
-        p.setPen(QPen(s.color, 1.5));
+        p.setPen(QPen(onTheme(s.color, m_theme), 1.5));
         QPainterPath path;
         QVector<QPointF> dots;
         bool started = false;
@@ -234,10 +237,10 @@ void ResidualPlot::drawLegend(QPainter& p, const QRectF& plot) const
     double bx = plot.right() - boxW - 6;
     double by = plot.top() + 6;
 
-    const bool blueprintLeg =(m_theme == Theme::Blueprint);
+    const ThemeColors lc = ThemeEngine::colorsFor(m_theme);
     p.fillRect(QRectF(bx, by, boxW, boxH),
-               blueprintLeg ? QColor(0x2b,0x2b,0x2b,200) : QColor(0x16,0x16,0x22,200));
-    p.setPen(blueprintLeg ? QColor(0x55,0x55,0x55) : QColor(0x33,0x33,0x44));
+               QColor(lc.plotBg.red(), lc.plotBg.green(), lc.plotBg.blue(), 210));
+    p.setPen(lc.border);
     p.drawRect(QRectF(bx, by, boxW, boxH));
 
     double ly = by + pad / 2.0;
@@ -251,11 +254,11 @@ void ResidualPlot::drawLegend(QPainter& p, const QRectF& plot) const
         }
 
         // Color swatch
-        p.fillRect(QRectF(bx + pad, ly + (lineH - swatchH) / 2.0, swatchW, swatchH), s.color);
+        p.fillRect(QRectF(bx + pad, ly + (lineH - swatchH) / 2.0, swatchW, swatchH), onTheme(s.color, m_theme));
 
         // Label
         QString txt = QString("%1  %2").arg(it.key()).arg(last, 0, 'e', 2);
-        p.setPen(s.color);
+        p.setPen(onTheme(s.color, m_theme));
         p.drawText(QPointF(bx + pad + swatchW + 6, ly + fm.ascent()), txt);
         ly += lineH;
     }

@@ -18,6 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "SolverConfigDialog.h"
+#include "themes/ThemeEngine.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -390,9 +391,9 @@ void SolverConfigDialog::updateMachDisplay()
     const double M     = a > 0 ? vel / a : 0.0;
     m_machLbl->setText(QString("M ≈ %1  (a = %2 m/s)").arg(M, 0, 'f', 2).arg(a, 0, 'f', 0));
     // Red for supersonic, amber for transonic, grey for subsonic
-    if (M >= 1.0)      m_machLbl->setStyleSheet("color: #FF6B6B; font-style: italic;");
-    else if (M >= 0.8) m_machLbl->setStyleSheet("color: #FFA500; font-style: italic;");
-    else               m_machLbl->setStyleSheet("color: gray; font-style: italic;");
+    const ThemeColors& tc = ThemeEngine::instance().colors();
+    const QColor mc = M >= 1.0 ? tc.danger : (M >= 0.8 ? tc.warning : tc.textMuted);
+    m_machLbl->setStyleSheet("color: " + mc.name() + "; font-style: italic;");
 }
 
 QList<SolverConfigDialog::PatchInfo> SolverConfigDialog::parseBoundary() const

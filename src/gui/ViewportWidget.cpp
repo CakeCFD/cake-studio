@@ -166,7 +166,8 @@ void ViewportWidget::setupPipeline() {
     m_vtkWidget->setRenderWindow(renderWindow);
 
     m_renderer = vtkSmartPointer<vtkRenderer>::New();
-    m_renderer->SetBackground(0.12, 0.12, 0.18);
+    const QColor vbg = ThemeEngine::instance().colors().viewport;
+    m_renderer->SetBackground(vbg.redF(), vbg.greenF(), vbg.blueF());
     renderWindow->AddRenderer(m_renderer);
 
     auto style = vtkSmartPointer<vtkInteractorStyleTrackballCamera>::New();
@@ -265,9 +266,8 @@ void ViewportWidget::setupResultsToolbar() {
     m_btnHideMesh = new QPushButton("Hide Mesh");
     m_btnHideMesh->setCheckable(true);
     m_btnHideMesh->setFixedWidth(80);
-    m_btnHideMesh->setStyleSheet(
-        "QPushButton { font-size: 11px; padding: 2px 6px; }"
-        "QPushButton:checked { background: #585b70; color: #cdd6f4; }");
+    m_btnHideMesh->setStyleSheet("QPushButton { font-size: 11px; padding: 2px 6px; }");
+    ThemeEngine::setRole(m_btnHideMesh, "toggle");
     barLayout->addWidget(m_btnHideMesh);
     connect(m_btnHideMesh, &QPushButton::toggled, this, [this](bool hidden) {
         m_meshActor->SetVisibility(hidden ? 0 : 1);
@@ -280,9 +280,8 @@ void ViewportWidget::setupResultsToolbar() {
     m_btnEdges->setCheckable(true);
     m_btnEdges->setChecked(false);
     m_btnEdges->setFixedWidth(52);
-    m_btnEdges->setStyleSheet(
-        "QPushButton { font-size: 11px; padding: 2px 4px; }"
-        "QPushButton:checked { background: #cba6f7; color: #1e1e2e; }");
+    m_btnEdges->setStyleSheet("QPushButton { font-size: 11px; padding: 2px 4px; }");
+    ThemeEngine::setRole(m_btnEdges, "toggle");
     barLayout->addWidget(m_btnEdges);
     connect(m_btnEdges, &QPushButton::toggled, this, [this](bool on) {
         m_meshActor->GetProperty()->SetEdgeVisibility(on ? 1 : 0);
@@ -296,9 +295,8 @@ void ViewportWidget::setupResultsToolbar() {
     btnCells->setCheckable(true);
     btnCells->setFixedWidth(48);
     btnCells->setToolTip("Show CFD mesh cells on wall surface");
-    btnCells->setStyleSheet(
-        "QPushButton { font-size: 11px; padding: 2px 4px; }"
-        "QPushButton:checked { background: #f38ba8; color: #1e1e2e; }");
+    btnCells->setStyleSheet("QPushButton { font-size: 11px; padding: 2px 4px; }");
+    ThemeEngine::setRole(btnCells, "toggle");
     barLayout->addWidget(btnCells);
     connect(btnCells, &QPushButton::toggled, this, [this](bool on) {
         m_resultActor->GetProperty()->SetEdgeVisibility(on ? 1 : 0);
@@ -312,9 +310,8 @@ void ViewportWidget::setupResultsToolbar() {
     m_btnIso->setCheckable(true);
     m_btnIso->setFixedWidth(48);
     m_btnIso->setToolTip("Toggle iso-surface on current scalar field");
-    m_btnIso->setStyleSheet(
-        "QPushButton { font-size: 11px; padding: 2px 4px; }"
-        "QPushButton:checked { background: #89dceb; color: #1e1e2e; }");
+    m_btnIso->setStyleSheet("QPushButton { font-size: 11px; padding: 2px 4px; }");
+    ThemeEngine::setRole(m_btnIso, "toggle");
     barLayout->addWidget(m_btnIso);
     connect(m_btnIso, &QPushButton::toggled, this, &ViewportWidget::toggleIsoSurface);
 
@@ -323,9 +320,8 @@ void ViewportWidget::setupResultsToolbar() {
     m_btnStream->setCheckable(true);
     m_btnStream->setFixedWidth(48);
     m_btnStream->setToolTip("Toggle streamlines on velocity field");
-    m_btnStream->setStyleSheet(
-        "QPushButton { font-size: 11px; padding: 2px 4px; }"
-        "QPushButton:checked { background: #a6e3a1; color: #1e1e2e; }");
+    m_btnStream->setStyleSheet("QPushButton { font-size: 11px; padding: 2px 4px; }");
+    ThemeEngine::setRole(m_btnStream, "toggle");
     barLayout->addWidget(m_btnStream);
     connect(m_btnStream, &QPushButton::toggled, this, &ViewportWidget::toggleStreamlines);
 
@@ -375,9 +371,8 @@ void ViewportWidget::setupMeshToolbar()
     m_btnEdges->setChecked(false);
     m_btnEdges->setFixedWidth(52);
     m_btnEdges->setToolTip("Toggle wireframe edge overlay (expensive on dense meshes)");
-    m_btnEdges->setStyleSheet(
-        "QPushButton { font-size: 11px; padding: 2px 4px; }"
-        "QPushButton:checked { background: #cba6f7; color: #1e1e2e; }");
+    m_btnEdges->setStyleSheet("QPushButton { font-size: 11px; padding: 2px 4px; }");
+    ThemeEngine::setRole(m_btnEdges, "toggle");
     connect(m_btnEdges, &QPushButton::toggled, this, [this](bool on) {
         m_meshActor->GetProperty()->SetEdgeVisibility(on ? 1 : 0);
         m_meshActor->GetProperty()->SetEdgeColor(0.2, 0.2, 0.3);
@@ -1438,10 +1433,8 @@ void ViewportWidget::setBackgroundColor(double r, double g, double b) {
 
 void ViewportWidget::setTheme(Theme t)
 {
-    if (t == Theme::Blueprint)
-        m_renderer->SetBackground(0.17, 0.17, 0.17);
-    else
-        m_renderer->SetBackground(0.12, 0.12, 0.18);
+    const QColor bg = ThemeEngine::colorsFor(t).viewport;
+    m_renderer->SetBackground(bg.redF(), bg.greenF(), bg.blueF());
 
     // No local stylesheet: ThemeEngine's global QSS handles everything.
     // A local setStyleSheet here would override palette derivation for all

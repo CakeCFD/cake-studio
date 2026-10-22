@@ -18,7 +18,9 @@
 \*---------------------------------------------------------------------------*/
 
 #include "FileBrowserDialog.h"
+#include "themes/ThemeEngine.h"
 #include "MainWindow.h"
+#include <QActionGroup>
 #include "MeshWizard.h"
 #include "CakeMeshPanel.h"
 #include "ExportResultsDialog.h"
@@ -94,13 +96,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // Toast overlay: sits above everything, hidden by default
     m_toast = new QLabel(this);
     m_toast->setAlignment(Qt::AlignCenter);
-    m_toast->setStyleSheet(
-        "background: rgba(40,42,54,220);"
-        "color: #a6e3a1;"
-        "border: 1px solid #a6e3a1;"
-        "border-radius: 6px;"
-        "padding: 4px 16px;"
-        "font-size: 12px;");
+    ThemeEngine::setRole(m_toast, "toast");
     m_toast->hide();
     m_toast->setAttribute(Qt::WA_TransparentForMouseEvents);
 
@@ -108,17 +104,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_toastTimer->setSingleShot(true);
     connect(m_toastTimer, &QTimer::timeout, m_toast, &QLabel::hide);
 
-    // Restore saved theme
-    QSettings s("CakeCFD", "CakeStudio");
-    Theme saved = (s.value("theme", "dark").toString() == "blueprint") ? Theme::Blueprint : Theme::Dark;
-    if (saved == Theme::Blueprint) {
-        ThemeEngine::instance().apply(Theme::Blueprint, *qApp);
-        if (m_viewport) m_viewport->setTheme(Theme::Blueprint);
-        if (m_meshViewport) m_meshViewport->setTheme(Theme::Blueprint);
-        if (m_console)  m_console->setTheme(Theme::Blueprint);
-        if (m_props)    m_props->onThemeChanged();
-        if (m_sysPanel) m_sysPanel->onThemeChanged();
-    }
+    // Restore saved theme (Graphite by default)
+    applyTheme(ThemeEngine::fromKey(QSettings("CakeCFD", "CakeStudio").value("theme").toString()));
 
     restoreWorkspace();
 }
@@ -390,26 +377,15 @@ void MainWindow::setupMenuBar() {
     // View
     auto* view     = menuBar()->addMenu("View");
     auto* themeMenu = view->addMenu("Theme");
-    connect(themeMenu->addAction("Dark"), &QAction::triggered, this, [this](){
-        ThemeEngine::instance().apply(Theme::Dark, *qApp);
-        if (m_viewport) m_viewport->setTheme(Theme::Dark);
-        if (m_meshViewport) m_meshViewport->setTheme(Theme::Dark);
-        if (m_console)  m_console->setTheme(Theme::Dark);
-        if (m_props)    m_props->onThemeChanged();
-        if (m_sysPanel) m_sysPanel->onThemeChanged();
-        QSettings("CakeCFD","CakeStudio").setValue("theme","dark");
-        markDirty();
-    });
-    connect(themeMenu->addAction("Blueprint"), &QAction::triggered, this, [this](){
-        ThemeEngine::instance().apply(Theme::Blueprint, *qApp);
-        if (m_viewport) m_viewport->setTheme(Theme::Blueprint);
-        if (m_meshViewport) m_meshViewport->setTheme(Theme::Blueprint);
-        if (m_console)  m_console->setTheme(Theme::Blueprint);
-        if (m_props)    m_props->onThemeChanged();
-        if (m_sysPanel) m_sysPanel->onThemeChanged();
-        QSettings("CakeCFD","CakeStudio").setValue("theme","blueprint");
-        markDirty();
-    });
+    m_themeGroup = new QActionGroup(this);
+    for (Theme t : ThemeEngine::all()) {
+        QAction* a = themeMenu->addAction(ThemeEngine::displayName(t));
+        a->setCheckable(true);
+        a->setData(ThemeEngine::key(t));
+        a->setChecked(t == ThemeEngine::instance().current());
+        m_themeGroup->addAction(a);
+        connect(a, &QAction::triggered, this, [this, t]() { applyTheme(t); markDirty(); });
+    }
     view->addSeparator();
     connect(view->addAction("Reset Camera"), &QAction::triggered,
             this, [this](){ if (m_viewport) m_viewport->resetCamera(); });
@@ -599,7 +575,7 @@ void MainWindow::setupToolBar() {
     tb->setStyleSheet(
         "QToolBar { padding: 0; spacing: 1px; }"
         "QToolButton { padding: 3px 10px; margin: 1px; border-radius: 3px; font-size: 12px; }"
-        "QToolBar::separator { width: 1px; background: #45475a; margin: 4px 2px; }");
+        "QToolBar::separator { width: 1px; background: palette(mid); margin: 4px 2px; }");
 
     // Mode switcher (always visible)
     auto* modeWidget = new QWidget;
@@ -613,12 +589,12 @@ void MainWindow::setupToolBar() {
     m_btnStudio->setChecked(true);
     m_btnStudio->setStyleSheet(
         "QPushButton { padding:3px 14px; border-radius:0; border-top-left-radius:4px; "
-        "border-bottom-left-radius:4px; font-size:12px; font-weight:bold; }"
-        "QPushButton:checked { background:#89b4fa; color:#1e1e2e; }");
+        "border-bottom-left-radius:4px; font-size:12px; font-weight:bold; }");
+    ThemeEngine::setRole(m_btnStudio, "toggle");
     m_btnMesh->setStyleSheet(
         "QPushButton { padding:3px 14px; border-radius:0; border-top-right-radius:4px; "
-        "border-bottom-right-radius:4px; font-size:12px; font-weight:bold; }"
-        "QPushButton:checked { background:#a6e3a1; color:#1e1e2e; }");
+        "border-bottom-right-radius:4px; font-size:12px; font-weight:bold; }");
+    ThemeEngine::setRole(m_btnMesh, "toggle");
     modeLayout->addWidget(m_btnStudio);
     modeLayout->addWidget(m_btnMesh);
     tb->addWidget(modeWidget);
@@ -861,6 +837,20 @@ void MainWindow::updateTitle()
     setWindowTitle(QString("Cake Studio: %1%2").arg(name, m_projectDirty ? " *" : ""));
 }
 
+void MainWindow::applyTheme(Theme theme)
+{
+    ThemeEngine::instance().apply(theme, *qApp);
+    if (m_viewport)     m_viewport->setTheme(theme);
+    if (m_meshViewport) m_meshViewport->setTheme(theme);
+    if (m_console)      m_console->setTheme(theme);
+    if (m_props)        m_props->onThemeChanged();
+    if (m_sysPanel)     m_sysPanel->onThemeChanged();
+    if (m_themeGroup)
+        for (QAction* a : m_themeGroup->actions())
+            a->setChecked(a->data().toString() == ThemeEngine::key(theme));
+    QSettings("CakeCFD", "CakeStudio").setValue("theme", ThemeEngine::key(theme));
+}
+
 void MainWindow::markDirty()
 {
     if (!m_projectDirty) { m_projectDirty = true; updateTitle(); }
@@ -908,7 +898,7 @@ bool MainWindow::saveProject(const QString& path)
     root["app"]      = "CakeStudio";
     root["saved"]    = QDateTime::currentDateTime().toString(Qt::ISODate);
     root["case_dir"] = caseDir;
-    root["theme"]    = (theme == Theme::Blueprint) ? "blueprint" : "dark";
+    root["theme"]    = ThemeEngine::key(theme);
 
     if (m_viewport) {
         QJsonObject vp;
@@ -980,7 +970,7 @@ void MainWindow::onAutosave()
     root["app"]      = "CakeStudio";
     root["saved"]    = QDateTime::currentDateTime().toString(Qt::ISODate);
     root["case_dir"] = caseDir;
-    root["theme"]    = (theme == Theme::Blueprint) ? "blueprint" : "dark";
+    root["theme"]    = ThemeEngine::key(theme);
     if (m_viewport) {
         QJsonObject vp;
         vp["active_field"]      = m_viewport->activeField();
@@ -1042,7 +1032,7 @@ void MainWindow::showToast(const QString& msg)
 
 void MainWindow::showStatusWarning(const QString& msg, int msec)
 {
-    statusBar()->setStyleSheet("color: #ffffff;");
+    statusBar()->setStyleSheet("color: " + ThemeEngine::instance().colors().warning.name() + ";");
     statusBar()->showMessage(msg, msec);
     QTimer::singleShot(msec, this, [this](){
         statusBar()->setStyleSheet("");
@@ -1073,15 +1063,7 @@ bool MainWindow::loadProject(const QString& path)
     }
 
     // Restore theme first so panels rebuild with correct colors
-    QString themeStr = root["theme"].toString();
-    Theme theme = (themeStr == "blueprint") ? Theme::Blueprint : Theme::Dark;
-    ThemeEngine::instance().apply(theme, *qApp);
-    if (m_viewport) m_viewport->setTheme(theme);
-        if (m_meshViewport) m_meshViewport->setTheme(theme);
-    if (m_console)  m_console->setTheme(theme);
-    if (m_props)    m_props->onThemeChanged();
-    if (m_sysPanel) m_sysPanel->onThemeChanged();
-    QSettings("CakeCFD","CakeStudio").setValue("theme", themeStr);
+    applyTheme(ThemeEngine::fromKey(root["theme"].toString()));
 
     // Restore case
     QString caseDir = root["case_dir"].toString();

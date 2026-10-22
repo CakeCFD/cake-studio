@@ -18,6 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "FileBrowserDialog.h"
+#include "themes/ThemeEngine.h"
 #include "OpenCaseDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -59,7 +60,8 @@ OpenCaseDialog::OpenCaseDialog(QWidget* parent)
 
     auto makeInfo = [](const QString& placeholder) {
         auto* l = new QLabel(placeholder);
-        l->setStyleSheet("color: #6c7086; font-size: 11px;");
+        l->setStyleSheet("font-size: 11px;");
+        ThemeEngine::setRole(l, "muted");
         return l;
     };
 
@@ -106,8 +108,10 @@ void OpenCaseDialog::onDirChanged(const QString& path)
 
 void OpenCaseDialog::scanCase(const QString& dir)
 {
-    auto ok  = [](const QString& s) { return "<span style='color:#a6e3a1;'>" + s + "</span>"; };
-    auto warn = [](const QString& s) { return "<span style='color:#f38ba8;'>" + s + "</span>"; };
+    const QString okC = ThemeEngine::instance().colors().success.name();
+    const QString badC = ThemeEngine::instance().colors().danger.name();
+    auto ok  = [okC](const QString& s) { return "<span style='color:" + okC + ";'>" + s + "</span>"; };
+    auto warn = [badC](const QString& s) { return "<span style='color:" + badC + ";'>" + s + "</span>"; };
 
     bool valid = false;
 

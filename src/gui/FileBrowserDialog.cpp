@@ -63,11 +63,11 @@ FileBrowserDialog::FileBrowserDialog(Mode mode, const QString& startDir,
     resize(940, 600);
 
     // Resolve theme colors once so all inline styles are consistent
-    bool isDark = ThemeEngine::instance().current() == Theme::Dark;
-    m_textColor    = isDark ? "#cdd6f4" : "#e0e0e0";
-    m_subTextColor = isDark ? "#6c7086" : "#888888";
-    m_dimTextColor = isDark ? "#585b70" : "#666666";
-    m_accentColor  = isDark ? "#89b4fa" : "#f5c500";
+    const ThemeColors& tc = ThemeEngine::instance().colors();
+    m_textColor    = tc.text.name();
+    m_subTextColor = tc.textMuted.name();
+    m_dimTextColor = tc.textDim.name();
+    m_accentColor  = tc.accent.name();
 
     // Parse filter sections  e.g. "Cake Files (*.cake);;All Files (*)"
     if (!filter.isEmpty()) {
