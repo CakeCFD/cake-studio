@@ -845,6 +845,7 @@ void MainWindow::applyTheme(Theme theme)
     if (m_console)      m_console->setTheme(theme);
     if (m_props)        m_props->onThemeChanged();
     if (m_sysPanel)     m_sysPanel->onThemeChanged();
+    if (m_meshPanel)    m_meshPanel->onThemeChanged();
     if (m_themeGroup)
         for (QAction* a : m_themeGroup->actions())
             a->setChecked(a->data().toString() == ThemeEngine::key(theme));

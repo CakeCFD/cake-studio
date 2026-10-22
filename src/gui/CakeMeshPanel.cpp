@@ -458,15 +458,8 @@ void CakeMeshPanel::buildBCTable()
         w->setFont(f);
     };
 
-    // Row tints are built from lightness alone (saturation 0): hue-preserving tints
-    // turn a blue-tinted background into a saturated band.
-    const QColor kWin  = m_bcTable->palette().color(QPalette::Window);
-    const QColor kBase = m_bcTable->palette().color(QPalette::Base);
-    const QColor kTxt  = m_bcTable->palette().color(QPalette::Text);
-    auto kTint = [](const QColor& c, int deltaL) {
-        const int l = qBound(0, c.lightness() + deltaL, 255);
-        return QColor::fromHsl(0, 0, l);   // hue 0 + saturation 0 == pure grey
-    };
+    // Separator and geometry rows take their tints from the active theme
+    const ThemeColors& tc = ThemeEngine::instance().colors();
 
     struct RowDef { QString name; int typeIdx; bool showValue; double defaultVal; };
 
@@ -496,17 +489,17 @@ void CakeMeshPanel::buildBCTable()
             auto* sep = new QTableWidgetItem(" Geometry Surfaces ");
             sep->setFlags(Qt::ItemIsEnabled);
             sep->setTextAlignment(Qt::AlignCenter);
-            sep->setBackground(kTint(kWin, 26));
-            sep->setForeground(kTxt);
+            sep->setBackground(tc.raised);
+            sep->setForeground(tc.textMuted);
             m_bcTable->setItem(row, 0, sep);
             m_bcTable->setSpan(row, 0, 1, 3);
             m_bcTable->setRowHeight(row, 18);
             return;
         }
 
-        // Geometry row: a faint lift off the base, same neutral grey as the separator.
-        const QColor geoBg = kTint(kBase, 14);
-        const QColor geoFg = kTxt;
+        // Geometry row: a faint lift off the table background
+        const QColor geoBg = tc.panel;
+        const QColor geoFg = tc.text;
 
         // Col 0: patch name
         auto* nameItem = new QTableWidgetItem(patchName);
