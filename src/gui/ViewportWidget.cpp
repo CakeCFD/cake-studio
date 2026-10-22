@@ -18,6 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "ViewportWidget.h"
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QToolBar>
@@ -139,8 +140,18 @@ void ViewportWidget::dropEvent(QDropEvent* e)
 // land on it, not on this parent widget. Forward them here.
 bool ViewportWidget::eventFilter(QObject* obj, QEvent* event)
 {
-    if (obj == m_vtkWidget) {
-        if (event->type() == QEvent::DragEnter) {
+    if (obj == m_vtkHost && m_vtkWidget && event->type() == QEvent::Resize) {
+        // Shrink at once (the native view is not clipped, it would cover other panels);
+        // growth waits for the drag to settle, the gap shows the viewport colour
+        const QSize host = m_vtkHost->size(), view = m_vtkWidget->size();
+        if (view.width() <= 1 || !m_vtkHost->isVisible()
+            || host.width() < view.width() || host.height() < view.height())
+            m_vtkWidget->setGeometry(m_vtkHost->rect());
+        else
+            m_resizeTimer->start();
+    }
+    if (m_vtkWidget && (obj == m_vtkWidget || obj == m_vtkWidget->embeddedOpenGLWindow())) {
+        if (event->type() == QEvent::DragEnter || event->type() == QEvent::DragMove) {
             dragEnterEvent(static_cast<QDragEnterEvent*>(event));
             return true;
         }
@@ -157,10 +168,24 @@ void ViewportWidget::setupPipeline() {
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
-    m_vtkWidget = new QVTKOpenGLNativeWidget(this);
+    // Resizing the GL view reallocates its framebuffers and re-renders the scene,
+    // so while a panel is being dragged it keeps its size and catches up after
+    m_vtkHost = new QWidget(this);
+    m_vtkHost->setObjectName("viewportHost");
+    m_vtkHost->installEventFilter(this);
+    layout->addWidget(m_vtkHost, 1);
+    m_resizeTimer = new QTimer(this);
+    m_resizeTimer->setSingleShot(true);
+    m_resizeTimer->setInterval(80);
+    connect(m_resizeTimer, &QTimer::timeout, this, [this]() {
+        m_vtkWidget->setGeometry(m_vtkHost->rect());
+    });
+
+    // Native-window view: a QOpenGLWidget makes Qt composite the whole UI through GL
+    m_vtkWidget = new QVTKOpenGLStereoWidget(m_vtkHost);
     m_vtkWidget->setAcceptDrops(true);
     m_vtkWidget->installEventFilter(this);
-    layout->addWidget(m_vtkWidget, 1);
+    m_vtkWidget->embeddedOpenGLWindow()->installEventFilter(this);
 
     auto renderWindow = vtkSmartPointer<vtkGenericOpenGLRenderWindow>::New();
     m_vtkWidget->setRenderWindow(renderWindow);
@@ -1435,6 +1460,8 @@ void ViewportWidget::setTheme(Theme t)
 {
     const QColor bg = ThemeEngine::colorsFor(t).viewport;
     m_renderer->SetBackground(bg.redF(), bg.greenF(), bg.blueF());
+    if (m_vtkHost)
+        m_vtkHost->setStyleSheet(QString("QWidget#viewportHost { background-color: %1; }").arg(bg.name()));
 
     // No local stylesheet: ThemeEngine's global QSS handles everything.
     // A local setStyleSheet here would override palette derivation for all

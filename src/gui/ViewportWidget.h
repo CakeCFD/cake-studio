@@ -34,7 +34,8 @@
 #include <vtkCubeSource.h>
 #include <vtkConeSource.h>
 #include <vtkActor.h>
-#include <QVTKOpenGLNativeWidget.h>
+#include <QVTKOpenGLStereoWidget.h>
+class QTimer;
 
 class QComboBox;
 class QSlider;
@@ -144,7 +145,10 @@ private:
     void applyField(const QString& field, int timeStep);
     void updateScalarBar(const QString& label, double mn, double mx);
 
-    QVTKOpenGLNativeWidget*       m_vtkWidget   = nullptr;
+    QVTKOpenGLStereoWidget*       m_vtkWidget   = nullptr;
+    // Holds the VTK view; the view is resized only once a panel drag pauses
+    QWidget*                      m_vtkHost     = nullptr;
+    QTimer*                       m_resizeTimer = nullptr;
     vtkSmartPointer<vtkRenderer>  m_renderer;
     vtkSmartPointer<vtkActor>     m_meshActor;
     vtkSmartPointer<vtkActor>     m_resultActor;
