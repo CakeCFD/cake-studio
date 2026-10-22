@@ -73,6 +73,7 @@ private:
     void restoreWorkspace();
     void onDockTopLevelChanged(QDockWidget* dock, bool floating);
     void setMode(AppMode mode);
+    void syncDocksToMode();   // hide docks that belong to the other mode after restoreState
 
     // Project (.cake) file management
     bool saveProject(const QString& path);

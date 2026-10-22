@@ -77,8 +77,9 @@ vtkSmartPointer<vtkPolyData> CADTessellator::tessellate(
     double angDef = params.angularDeflection * M_PI / 180.0;
 
     std::cerr << "[TESS] BRepMesh start linDef=" << linDef << "\n" << std::flush;
+    // The constructor already runs the mesher; calling Perform() again would
+    // mesh the shape a second time.
     BRepMesh_IncrementalMesh mesher(shape, linDef, false, angDef, false);
-    mesher.Perform();
     std::cerr << "[TESS] BRepMesh done\n" << std::flush;
 
     auto pts   = vtkSmartPointer<vtkPoints>::New();

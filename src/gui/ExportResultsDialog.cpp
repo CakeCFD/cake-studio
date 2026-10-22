@@ -463,63 +463,81 @@ static QStringList parseForceLine(const QString& raw)
     return clean.split(QRegularExpression(R"(\s+)"), Qt::SkipEmptyParts);
 }
 
+// Turbulence dictionary: OF2412 ESI uses constant/turbulenceProperties,
+// newer layouts use constant/momentumTransport
+static QString turbulenceDictPath(const QString& caseDir)
+{
+    const QString mt = caseDir + "/constant/momentumTransport";
+    if (QFile::exists(mt)) return mt;
+    return caseDir + "/constant/turbulenceProperties";
+}
+
 QList<ExportResultsDialog::ForceRow> ExportResultsDialog::parseForces() const
 {
     QDir ppDir(m_caseDir + "/postProcessing/forces");
     if (!ppDir.exists()) return {};
 
-    // Find the time subdirectory (usually "0")
-    QString timeDir;
+    // One subdirectory per (re)start time ("0", "500", "1000", ...). Visit
+    // them in numeric order so later restarts override overlapping times.
+    QList<QPair<double, QString>> timeDirs;
     for (const QFileInfo& td : ppDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
-        timeDir = td.filePath(); break;
+        bool ok = false;
+        double t = td.fileName().toDouble(&ok);
+        if (ok) timeDirs.append({t, td.filePath()});
     }
-    if (timeDir.isEmpty()) return {};
+    if (timeDirs.isEmpty()) return {};
+    std::sort(timeDirs.begin(), timeDirs.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
 
-    // force.dat (try both spellings)
-    QString forcePath = timeDir + "/forces.dat";
-    if (!QFile::exists(forcePath)) forcePath = timeDir + "/force.dat";
-    if (!QFile::exists(forcePath)) return {};
-
-    // moment.dat (optional: separate file in OF 2412)
-    QString momentPath = timeDir + "/moments.dat";
-    if (!QFile::exists(momentPath)) momentPath = timeDir + "/moment.dat";
-    bool hasMoments = QFile::exists(momentPath);
-
-    // Parse force file into a time-keyed map first
     QMap<double, ForceRow> byTime;
-    {
-        QFile f(forcePath);
-        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
-        QTextStream in(&f);
-        while (!in.atEnd()) {
-            QString line = in.readLine().trimmed();
-            if (line.startsWith('#') || line.isEmpty()) continue;
-            QStringList p = parseForceLine(line);
-            if (p.size() < 10) continue;
-            bool ok; ForceRow r;
-            r.time = p[0].toDouble(&ok); if (!ok) continue;
-            // p[1-3] = total, p[4-6] = pressure, p[7-9] = viscous
-            r.fp_x = p[4].toDouble(); r.fp_y = p[5].toDouble(); r.fp_z = p[6].toDouble();
-            r.fv_x = p[7].toDouble(); r.fv_y = p[8].toDouble(); r.fv_z = p[9].toDouble();
-            byTime[r.time] = r;
-        }
-    }
+    for (const auto& td : timeDirs) {
+        const QString& timeDir = td.second;
 
-    // Merge moments from moment.dat if present
-    if (hasMoments) {
-        QFile mf(momentPath);
-        if (mf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QTextStream in(&mf);
+        // force.dat (try both spellings)
+        QString forcePath = timeDir + "/forces.dat";
+        if (!QFile::exists(forcePath)) forcePath = timeDir + "/force.dat";
+        if (!QFile::exists(forcePath)) continue;
+
+        // moment.dat (optional: separate file in OF 2412)
+        QString momentPath = timeDir + "/moments.dat";
+        if (!QFile::exists(momentPath)) momentPath = timeDir + "/moment.dat";
+        bool hasMoments = QFile::exists(momentPath);
+
+        // Parse force file into a time-keyed map first
+        {
+            QFile f(forcePath);
+            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+            QTextStream in(&f);
             while (!in.atEnd()) {
                 QString line = in.readLine().trimmed();
                 if (line.startsWith('#') || line.isEmpty()) continue;
                 QStringList p = parseForceLine(line);
                 if (p.size() < 10) continue;
-                bool ok; double t = p[0].toDouble(&ok); if (!ok) continue;
-                if (!byTime.contains(t)) continue;
-                // p[4-6] = pressure moment, p[7-9] = viscous moment
-                byTime[t].mp_x = p[4].toDouble(); byTime[t].mp_y = p[5].toDouble(); byTime[t].mp_z = p[6].toDouble();
-                byTime[t].mv_x = p[7].toDouble(); byTime[t].mv_y = p[8].toDouble(); byTime[t].mv_z = p[9].toDouble();
+                bool ok; ForceRow r;
+                r.time = p[0].toDouble(&ok); if (!ok) continue;
+                // p[1-3] = total, p[4-6] = pressure, p[7-9] = viscous
+                r.fp_x = p[4].toDouble(); r.fp_y = p[5].toDouble(); r.fp_z = p[6].toDouble();
+                r.fv_x = p[7].toDouble(); r.fv_y = p[8].toDouble(); r.fv_z = p[9].toDouble();
+                byTime[r.time] = r;
+            }
+        }
+
+        // Merge moments from moment.dat if present
+        if (hasMoments) {
+            QFile mf(momentPath);
+            if (mf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream in(&mf);
+                while (!in.atEnd()) {
+                    QString line = in.readLine().trimmed();
+                    if (line.startsWith('#') || line.isEmpty()) continue;
+                    QStringList p = parseForceLine(line);
+                    if (p.size() < 10) continue;
+                    bool ok; double t = p[0].toDouble(&ok); if (!ok) continue;
+                    if (!byTime.contains(t)) continue;
+                    // p[4-6] = pressure moment, p[7-9] = viscous moment
+                    byTime[t].mp_x = p[4].toDouble(); byTime[t].mp_y = p[5].toDouble(); byTime[t].mp_z = p[6].toDouble();
+                    byTime[t].mv_x = p[7].toDouble(); byTime[t].mv_y = p[8].toDouble(); byTime[t].mv_z = p[9].toDouble();
+                }
             }
         }
     }
@@ -587,7 +605,7 @@ bool ExportResultsDialog::writeReport(const QString& path,
 
     QString caseName   = QFileInfo(m_caseDir).fileName();
     QString solver     = detectSolver();
-    QString mtPath     = m_caseDir + "/constant/momentumTransport";
+    QString mtPath     = turbulenceDictPath(m_caseDir);
     QString simType    = readDictValue(mtPath, "simulationType");
     QString turbModel, deltaModel;
     if (simType == "LES") {
@@ -1019,11 +1037,13 @@ QMap<QString,QString> ExportResultsDialog::parseMeshStats() const
         auto m = reCells.match(txt);
         if (m.hasMatch()) stats["cells"] = m.captured(1);
 
-        QRegularExpression reNonOrtho(R"(non-orthogonality Max:\s+([\d.]+))");
+        // Floats with optional exponent (skewness is often eg. 9.8e-15)
+        const QString F = R"(([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?))";
+        QRegularExpression reNonOrtho(R"((?:non-orthogonality Max:|Max non-orthogonality\s*=)\s*)" + F);
         m = reNonOrtho.match(txt);
         if (m.hasMatch()) stats["max_non_ortho"] = m.captured(1);
 
-        QRegularExpression reSkew(R"([Mm]ax skewness\s*=\s*([\d.]+))");
+        QRegularExpression reSkew(R"([Mm]ax skewness\s*[=:]\s*)" + F);
         m = reSkew.match(txt);
         if (m.hasMatch()) stats["max_skewness"] = m.captured(1);
 
@@ -1039,7 +1059,7 @@ QMap<QString,QString> ExportResultsDialog::parseMeshStats() const
 
 QStringList ExportResultsDialog::citations(const QString& turbModel) const
 {
-    QString mtPath  = m_caseDir + "/constant/momentumTransport";
+    QString mtPath  = turbulenceDictPath(m_caseDir);
     QString simType = readDictValue(mtPath, "simulationType").toLower();
 
     QStringList refs;

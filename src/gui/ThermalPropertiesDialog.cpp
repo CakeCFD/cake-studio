@@ -18,6 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "ThermalPropertiesDialog.h"
+#include "BCEditorDialog.h"   // OFDict scanner
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -125,6 +126,15 @@ ThermalPropertiesDialog::ThermalPropertiesDialog(const QString& caseDir, QWidget
     m_suthBox->hide();
     root->addWidget(m_suthBox);
 
+    // Equation-of-state extras (only the one the selected EOS needs is shown)
+    m_eosBox = new QGroupBox("Equation of state");
+    auto* eosForm = new QFormLayout(m_eosBox);
+    m_rho  = makeSpin(1e-6, 1e5, 1.225, 4, "kg/m³");
+    m_pRef = makeSpin(1, 1e9, 1e5, 1, "Pa");
+    eosForm->addRow("rho:", m_rho);
+    eosForm->addRow("pRef:", m_pRef);
+    root->addWidget(m_eosBox);
+
     // Status + buttons
     m_statusLbl = new QLabel;
     m_statusLbl->setStyleSheet("font-size:11px;");
@@ -144,7 +154,98 @@ ThermalPropertiesDialog::ThermalPropertiesDialog(const QString& caseDir, QWidget
     connect(btnCancel,   &QPushButton::clicked,          this, &QDialog::reject);
     connect(btnApply,    &QPushButton::clicked,          this, &ThermalPropertiesDialog::onApply);
 
+    auto syncEos = [this, eosForm](const QString& eos) {
+        // Qt5 has no QFormLayout::setRowVisible: toggle field + label
+        auto showRow = [eosForm](QWidget* w, bool on) {
+            w->setVisible(on);
+            if (QWidget* l = eosForm->labelForField(w)) l->setVisible(on);
+        };
+        showRow(m_rho,  eos == "rhoConst");
+        showRow(m_pRef, eos == "incompressiblePerfectGas");
+        m_eosBox->setVisible(eos == "rhoConst" || eos == "incompressiblePerfectGas");
+        adjustSize();
+    };
+    connect(m_eos, &QComboBox::currentTextChanged, this, syncEos);
+
+    // Air janaf defaults (Tlow 200 K, Thigh 3500 K)
+    m_janafTlow    = "200";
+    m_janafThigh   = "3500";
+    m_janafTcommon = "1000";
+    m_janafHigh    = "(3.08793 0.00124597 -4.23719e-07 6.74775e-11 -3.97077e-15 -995.263 5.95961)";
+    m_janafLow     = "(3.56839 -0.000678729 1.55371e-06 -3.29937e-12 -4.66395e-13 -1062.35 3.71583)";
+
     onPresetChanged(m_preset->currentText());
+    loadExisting();
+    syncEos(m_eos->currentText());
+}
+
+void ThermalPropertiesDialog::loadExisting()
+{
+    QFile f(m_caseDir + "/constant/thermophysicalProperties");
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+    const QString t = QString::fromUtf8(f.readAll());
+
+    using namespace OFDict;
+    // Entries of the sub-dict reached by following dict keys from the top level
+    auto dictAt = [&t](const QStringList& path) -> QPair<QList<DictEntry>, bool> {
+        QList<DictEntry> cur = topLevelEntries(t, 0, t.size());
+        for (const QString& k : path) {
+            const DictEntry* e = findEntry(cur, k);
+            if (!e || e->braceOpen < 0 || e->braceClose < 0) return {{}, false};
+            cur = topLevelEntries(t, e->braceOpen + 1, e->braceClose);
+        }
+        return {cur, true};
+    };
+    auto value = [&](const QStringList& path, const QString& key) -> QString {
+        auto d = dictAt(path);
+        if (!d.second) return {};
+        const DictEntry* e = findEntry(d.first, key);
+        return (e && e->braceOpen < 0) ? entryValue(t, *e) : QString();
+    };
+    auto setCombo = [](QComboBox* c, const QString& v) {
+        if (v.isEmpty()) return;
+        if (c->findText(v) < 0) c->addItem(v);
+        c->setCurrentText(v);
+    };
+    auto setSpin = [](QDoubleSpinBox* s, const QString& v) {
+        bool ok = false;
+        double d = v.toDouble(&ok);
+        if (ok) s->setValue(d);
+    };
+
+    if (!dictAt({"thermoType"}).second) return;
+
+    // Existing case: show its own values, editable, instead of a preset
+    m_preset->setCurrentText("Custom");
+
+    setCombo(m_thermoType, value({"thermoType"}, "type"));
+    setCombo(m_transport,  value({"thermoType"}, "transport"));
+    setCombo(m_thermo,     value({"thermoType"}, "thermo"));
+    setCombo(m_eos,        value({"thermoType"}, "equationOfState"));
+    const QString energy = value({"thermoType"}, "energy");
+    if (!energy.isEmpty()) m_energy = energy;
+
+    setSpin(m_molWeight, value({"mixture", "specie"}, "molWeight"));
+    setSpin(m_cp,        value({"mixture", "thermodynamics"}, "Cp"));
+    setSpin(m_hf,        value({"mixture", "thermodynamics"}, "Hf"));
+    setSpin(m_mu,        value({"mixture", "transport"}, "mu"));
+    setSpin(m_pr,        value({"mixture", "transport"}, "Pr"));
+    setSpin(m_as,        value({"mixture", "transport"}, "As"));
+    setSpin(m_ts,        value({"mixture", "transport"}, "Ts"));
+    setSpin(m_rho,       value({"mixture", "equationOfState"}, "rho"));
+    setSpin(m_pRef,      value({"mixture", "equationOfState"}, "pRef"));
+
+    auto keep = [&](QString& dst, const QString& key) {
+        const QString v = value({"mixture", "thermodynamics"}, key);
+        if (!v.isEmpty()) dst = v.simplified();
+    };
+    keep(m_janafTlow,    "Tlow");
+    keep(m_janafThigh,   "Thigh");
+    keep(m_janafTcommon, "Tcommon");
+    keep(m_janafHigh,    "highCpCoeffs");
+    keep(m_janafLow,     "lowCpCoeffs");
+
+    m_statusLbl->setText("Loaded existing constant/thermophysicalProperties");
 }
 
 void ThermalPropertiesDialog::onPresetChanged(const QString& preset)
@@ -196,6 +297,35 @@ void ThermalPropertiesDialog::onApply()
             .arg(m_pr->value(), 0, 'f', 6);
     }
 
+    // janaf ignores Cp/Hf and needs its polynomial coefficients instead
+    QString thermoBlock;
+    if (m_thermo->currentText() == "janaf") {
+        thermoBlock = QString(
+            "    thermodynamics\n    {\n"
+            "        Tlow            %1;\n"
+            "        Thigh           %2;\n"
+            "        Tcommon         %3;\n"
+            "        highCpCoeffs    %4;\n"
+            "        lowCpCoeffs     %5;\n"
+            "    }\n")
+            .arg(m_janafTlow, m_janafThigh, m_janafTcommon, m_janafHigh, m_janafLow);
+    } else {
+        thermoBlock = "    thermodynamics\n    {\n"
+            + QString("        Cp          %1;\n").arg(m_cp->value(), 0, 'f', 2)
+            + QString("        Hf          %1;\n").arg(m_hf->value(), 0, 'f', 1)
+            + "    }\n";
+    }
+
+    // Coefficients the chosen equation of state requires (perfectGas has none)
+    QString eosBlock;
+    const QString eos = m_eos->currentText();
+    if (eos == "rhoConst")
+        eosBlock = QString("    equationOfState\n    {\n        rho         %1;\n    }\n")
+                       .arg(m_rho->value(), 0, 'g', 8);
+    else if (eos == "incompressiblePerfectGas")
+        eosBlock = QString("    equationOfState\n    {\n        pRef        %1;\n    }\n")
+                       .arg(m_pRef->value(), 0, 'g', 10);
+
     QString content =
         "FoamFile\n{\n"
         "    version     2.0;\n"
@@ -210,17 +340,15 @@ void ThermalPropertiesDialog::onApply()
         + QString("    thermo          %1;\n").arg(m_thermo->currentText())
         + QString("    equationOfState %1;\n").arg(m_eos->currentText())
         + "    specie          specie;\n"
-        + "    energy          sensibleEnthalpy;\n"
+        + QString("    energy          %1;\n").arg(m_energy)
         + "}\n\n"
         + "mixture\n{\n"
         + "    specie\n    {\n"
         + "        nMoles      1;\n"
         + QString("        molWeight   %1;\n").arg(m_molWeight->value(), 0, 'f', 3)
         + "    }\n"
-        + "    thermodynamics\n    {\n"
-        + QString("        Cp          %1;\n").arg(m_cp->value(), 0, 'f', 2)
-        + QString("        Hf          %1;\n").arg(m_hf->value(), 0, 'f', 1)
-        + "    }\n"
+        + eosBlock
+        + thermoBlock
         + transportBlock
         + "}\n";
 

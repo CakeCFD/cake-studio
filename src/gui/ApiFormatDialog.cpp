@@ -18,6 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "ApiFormatDialog.h"
+#include "DatasetClient.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -219,7 +220,7 @@ QStringList ApiFormatDialog::componentKeys() const
 {
     QStringList keys;
     for (const QString& k : m_keysEdit->text().split(','))
-        keys << k.trimmed();
+        if (!k.trimmed().isEmpty()) keys << k.trimmed();
     return keys;
 }
 
@@ -256,50 +257,10 @@ QVector<double> ApiFormatDialog::parseResponse(const QByteArray& json,
                                                 const QString& path,
                                                 const QStringList& keys) const
 {
-    QJsonParseError err;
-    auto doc = QJsonDocument::fromJson(json, &err);
-    if (err.error != QJsonParseError::NoError) {
-        m_resultEdit->setPlainText("[JSON parse error] " + err.errorString());
-        return {};
-    }
-
-    // Walk the dot-separated path
-    QJsonValue cur = doc.isArray() ? QJsonValue(doc.array())
-                                   : QJsonValue(doc.object());
-    if (!path.isEmpty()) {
-        for (const QString& seg : path.split('.', Qt::SkipEmptyParts)) {
-            if (cur.isObject())      cur = cur.toObject().value(seg);
-            else if (cur.isArray()) {
-                // Treat segment as index if numeric
-                bool ok; int idx = seg.toInt(&ok);
-                cur = ok ? cur.toArray().at(idx) : QJsonValue();
-            } else { cur = QJsonValue(); break; }
-        }
-    }
-
-    if (!cur.isArray()) return {};
-
-    QVector<double> result;
-    for (const QJsonValue& item : cur.toArray()) {
-        if (item.isObject()) {
-            // Extract each component key
-            auto obj = item.toObject();
-            for (const QString& k : keys) {
-                // Support nested key like "velocity.x" within each item
-                QJsonValue v = obj.value(k);
-                if (v.isUndefined() && k.contains('.')) {
-                    QJsonValue sub = item;
-                    for (const QString& seg : k.split('.')) {
-                        if (sub.isObject()) sub = sub.toObject().value(seg);
-                        else { sub = QJsonValue(); break; }
-                    }
-                    v = sub;
-                }
-                result << v.toDouble();
-            }
-        } else if (item.isDouble()) {
-            result << item.toDouble();
-        }
-    }
+    // Same parser the live query uses, so Test results match real runs
+    QString err;
+    QVector<double> result = CFD::DatasetClient::parseCustomJson(json, path, keys, &err);
+    if (!err.isEmpty())
+        m_resultEdit->setPlainText("[JSON parse error] " + err);
     return result;
 }

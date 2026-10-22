@@ -22,6 +22,7 @@
 #include <QString>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QPointer>
 
 namespace CFD {
 
@@ -65,7 +66,22 @@ public:
                          const QVector<double>& times,
                          const QVector<double>& points);
 
+    // Cancels the running range job and aborts any in-flight query (single
+    // or range); replies that still arrive afterwards are ignored
     void cancelRange();
+
+    // Custom REST/JSON response parser shared with ApiFormatDialog's Test.
+    // path: dot-separated, numeric segments index arrays ("data.0.items").
+    // keys: per-item component keys, each may be dotted/indexed ("vel.x").
+    static QVector<double> parseCustomJson(const QByteArray& raw, const QString& path,
+                                           const QStringList& keys,
+                                           QString* errOut = nullptr);
+
+    // JHTDB SOAP vocabulary (also used by DatasetPanel's request viewer)
+    static QString soapNamespace(const QString& endpoint);
+    static QString soapMethod(const QString& field);
+    static QString spatialInterpName(SpatialInterp s, const QString& method);
+    static QString temporalInterpName(TemporalInterp t);
 
     // Compute turbulence statistics from spatial velocity samples (3-component)
     static TurbStats computeTurbStats(const QVector<double>& velocities,
@@ -103,7 +119,12 @@ private:
     bool isSoap()     const;  // true when endpoint looks like a SOAP service (.asmx)
     bool isGraphQL()  const;  // true when endpoint contains "graphql"
 
+    void track(QNetworkReply* reply);   // tag with m_generation, remember for abort
+    void clearRangeJob();
+
     QNetworkAccessManager* m_nam;
+    quint64  m_generation = 0;          // bumped by cancelRange()
+    QList<QPointer<QNetworkReply>> m_inflight;
     QString  m_endpoint;
     QString  m_token;
     SpatialInterp  m_spatialInterp  = SpatialInterp::Lag4;

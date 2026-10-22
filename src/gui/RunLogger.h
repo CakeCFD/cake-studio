@@ -39,6 +39,7 @@ struct RunInfo {
     QString nCores;
     QString timestamp;
     bool    converged  = false;
+    bool    stopped    = false;
     int     nSteps     = 0;
     double  finalTime  = 0.0;
     QMap<QString, double> finalResiduals;
@@ -57,8 +58,10 @@ class RunLogger {
 public:
     // Call just before solver starts: snapshots inputs, returns run directory path
     static QString        startRun(const QString& caseDir, const QString& solver);
-    // Call after solver exits: writes results CSV, metadata.json, run_report.md
-    static void           finishRun(const QString& runDir, const QString& caseDir, bool converged);
+    // Call after solver exits: writes results CSV, metadata.json, run_report.md.
+    // stopped marks a run the user interrupted (kept, but flagged in metadata).
+    static void           finishRun(const QString& runDir, const QString& caseDir, bool converged,
+                                    bool stopped = false);
     // Returns all runs found in <caseDir>/runs/, sorted by index
     static QList<RunInfo> listRuns(const QString& caseDir);
     // Reads a RunInfo from a run directory's metadata.json
@@ -69,7 +72,8 @@ public:
 private:
     static int    nextIndex(const QString& caseDir);
     static void   copyInputs(const QString& caseDir, const QString& inputsDir);
-    static QString detectSolver(const QString& caseDir);
+    static QString detectSolver(const QString& caseDir, const QString& preferred = {});
+    static QString caseDirForRun(const QString& runDir);
     static QString readDictValue(const QString& filePath, const QString& key);
     static QString readDivScheme(const QString& fvSchemesPath);
     static bool    copyDir(const QString& src, const QString& dst);

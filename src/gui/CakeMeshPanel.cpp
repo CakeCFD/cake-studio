@@ -63,6 +63,15 @@ CakeMeshPanel::CakeMeshPanel(QWidget* parent) : QWidget(parent)
             this, &CakeMeshPanel::onProcessOutput);
     connect(m_process, QOverload<int,QProcess::ExitStatus>::of(&QProcess::finished),
             this, &CakeMeshPanel::onProcessFinished);
+    // finished() never fires when bash cannot be started: fail the queue here so
+    // the panel does not stay stuck in the running state
+    connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError err) {
+        if (err != QProcess::FailedToStart) return;  // other errors still emit finished()
+        log("  [FAILED] could not start bash: " + m_process->errorString());
+        m_queueFailed = true;
+        m_cmdQueue.clear();
+        runNextInQueue();
+    });
 
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(6, 6, 6, 6);
@@ -719,7 +728,9 @@ void CakeMeshPanel::onRunMesh()
     if (m_caseDir.isEmpty()) { log("Generate a case first."); return; }
 
     QString env  = ofEnvPrefix();
-    QString base = env + " && cd " + m_caseDir + " && ";
+    QString quoted = m_caseDir;
+    quoted.replace("'", "'\"'\"'");   // close quote, literal ', reopen
+    QString base = env + " && cd '" + quoted + "' && ";
 
     runQueue({
         base + "surfaceFeatureExtract 2>&1",
@@ -777,10 +788,15 @@ void CakeMeshPanel::onProcessOutput()
     }
 }
 
-void CakeMeshPanel::onProcessFinished(int exitCode, QProcess::ExitStatus)
+void CakeMeshPanel::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 {
     onProcessOutput();
-    if (exitCode != 0) {
+    if (status == QProcess::CrashExit) {
+        // exitCode is meaningless (often 0) after a crash or kill
+        log("  [FAILED] process crashed or was killed");
+        m_queueFailed = true;
+        m_cmdQueue.clear();
+    } else if (exitCode != 0) {
         log("  [FAILED] exit=" + QString::number(exitCode));
         m_queueFailed = true;
         m_cmdQueue.clear();

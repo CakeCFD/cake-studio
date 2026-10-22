@@ -21,6 +21,7 @@
 #include "DatasetPanel.h"
 #include "CitationManager.h"
 #include "ApiFormatDialog.h"
+#include "BCEditorDialog.h"   // OFDict scanner
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -208,6 +209,18 @@ static QVector<QVector<int>> parseFaces(const QString& caseDir)
     return faces;
 }
 
+// One "x y z" triple per line; whitespace and/or commas separate components
+static QVector<double> parsePointLines(const QString& text)
+{
+    static const QRegularExpression sep(R"([\s,]+)");
+    QVector<double> pts;
+    for (const QString& line : text.split('\n', Qt::SkipEmptyParts)) {
+        auto p = line.trimmed().split(sep, Qt::SkipEmptyParts);
+        if (p.size() >= 3) pts << p[0].toDouble() << p[1].toDouble() << p[2].toDouble();
+    }
+    return pts;
+}
+
 // construction
 
 DatasetPanel::DatasetPanel(QWidget* parent)
@@ -232,6 +245,18 @@ DatasetPanel::DatasetPanel(QWidget* parent)
     m_tokenEdit->setText(m_settings.value("token", "").toString());
     m_spatialInterp->setCurrentText(m_settings.value("spatialInterp", "Lag4").toString());
     m_temporalInterp->setCurrentText(m_settings.value("temporalInterp", "None").toString());
+
+    // Custom-database citation saved by ApiFormatDialog in a previous session
+    {
+        auto cv = [this](const char* k) {
+            return m_settings.value(QString("customApi/citation/") + k, "").toString();
+        };
+        CitationManager::Citation c{"custom_endpoint", "Custom Database",
+                                    cv("authors"), cv("title"), cv("journal"), cv("year"),
+                                    cv("volume"), cv("pages"), cv("doi")};
+        if (!c.authors.isEmpty() || !c.doi.isEmpty())
+            CitationManager::instance().registerCustom("custom_endpoint", c);
+    }
 
     // Only auto-refresh if an endpoint is already configured - avoids noisy startup errors
     // when the panel is first opened with no settings saved yet.
@@ -476,9 +501,7 @@ void DatasetPanel::buildUI()
     connect(appendPatchBtn,  &QPushButton::clicked, this, [this]{ onLoadPatchPoints(true);  });
     connect(m_pointsEdit, &QPlainTextEdit::textChanged, this, [this]{
         m_settings.setValue("points", m_pointsEdit->toPlainText());
-        int n = 0;
-        for (const QString& line : m_pointsEdit->toPlainText().split('\n', Qt::SkipEmptyParts))
-            if (line.trimmed().split(' ', Qt::SkipEmptyParts).size() >= 3) ++n;
+        int n = parsePointLines(m_pointsEdit->toPlainText()).size() / 3;
         m_ptCountLbl->setText(n > 0 ? QString("%1 points queued").arg(n) : "");
         m_autowrapBtn->setEnabled(n > 0);
     });
@@ -614,13 +637,7 @@ void DatasetPanel::onQueryClicked()
     }
     onSaveSettings();
 
-    QVector<double> pts;
-    for (const QString& line :
-         m_pointsEdit->toPlainText().split('\n', Qt::SkipEmptyParts)) {
-        auto parts = line.trimmed().split(' ', Qt::SkipEmptyParts);
-        if (parts.size() >= 3)
-            pts << parts[0].toDouble() << parts[1].toDouble() << parts[2].toDouble();
-    }
+    QVector<double> pts = parsePointLines(m_pointsEdit->toPlainText());
     if (pts.isEmpty()) { log("[ERROR] No valid points (format: x y z per line)."); return; }
 
     m_lastPoints = pts;
@@ -811,10 +828,10 @@ void DatasetPanel::onExportToBoundary()
     QString ofField = fieldToOF.value(m_lastField, m_lastField);
 
     if (!writeBoundaryData(caseDir, patch, m_lastPoints,
-                           m_lastRangeResults, m_lastRangeTimes, m_lastComponents)) {
+                           m_lastRangeResults, m_lastRangeTimes, m_lastComponents, ofField)) {
         log("[ERROR] Failed to write boundaryData."); return;
     }
-    if (!patchInletBC(caseDir, patch, ofField))
+    if (!patchInletBC(caseDir, patch, ofField, m_lastComponents))
         log("[WARNING] Could not auto-patch 0/" + ofField + ": do it manually.");
 
     log(QString("[OK] Written: %1/constant/boundaryData/%2/").arg(caseDir, patch));
@@ -909,11 +926,7 @@ void DatasetPanel::onLoadPatchPoints(bool append)
 void DatasetPanel::onAutowrap()
 {
     // Parse current points
-    QVector<double> pts;
-    for (const QString& line : m_pointsEdit->toPlainText().split('\n', Qt::SkipEmptyParts)) {
-        auto p = line.trimmed().split(' ', Qt::SkipEmptyParts);
-        if (p.size() >= 3) pts << p[0].toDouble() << p[1].toDouble() << p[2].toDouble();
-    }
+    QVector<double> pts = parsePointLines(m_pointsEdit->toPlainText());
     if (pts.isEmpty()) return;
 
     static constexpr double kTwoPi = 6.283185307179586;
@@ -1137,7 +1150,7 @@ bool DatasetPanel::writeBoundaryData(const QString& caseDir, const QString& patc
                                       const QVector<double>& points,
                                       const QList<QVector<double>>& valuesByTime,
                                       const QVector<double>& times,
-                                      int components)
+                                      int components, const QString& fieldName)
 {
     QString baseDir = caseDir + "/constant/boundaryData/" + patch;
     QDir().mkpath(baseDir);
@@ -1150,14 +1163,22 @@ bool DatasetPanel::writeBoundaryData(const QString& caseDir, const QString& patc
         QTextStream o(&f);
         o << "FoamFile\n{\n    version 2.0; format ascii;\n"
           << "    class vectorField; object points;\n}\n" << nPts << "\n(\n";
+        // 15 significant digits: closely spaced face centres must stay
+        // distinct or timeVaryingMapped's triangulation degenerates
         for (int i = 0; i < nPts; ++i)
             o << QString("  (%1 %2 %3)\n")
-                 .arg(points[i*3]).arg(points[i*3+1]).arg(points[i*3+2]);
+                 .arg(points[i*3], 0, 'g', 15)
+                 .arg(points[i*3+1], 0, 'g', 15)
+                 .arg(points[i*3+2], 0, 'g', 15);
         o << ")\n";
     }
 
-    QString cls   = (components == 3) ? "vectorField" : "scalarField";
-    QString fname = (components == 3) ? "U" : "p";
+    QString cls = components == 9 ? "tensorField"
+                : components == 6 ? "symmTensorField"
+                : components == 3 ? "vectorField"
+                :                   "scalarField";
+    // File name must match the BC's fieldName entry (U, p, T, gradU, ...)
+    const QString& fname = fieldName;
 
     for (int ti = 0; ti < times.size() && ti < valuesByTime.size(); ++ti) {
         QString timeDir = baseDir + "/" + QString::number(times[ti], 'f', 4);
@@ -1169,14 +1190,15 @@ bool DatasetPanel::writeBoundaryData(const QString& caseDir, const QString& patc
         o << "FoamFile\n{\n    version 2.0; format ascii;\n"
           << "    class " << cls << "; object " << fname << ";\n}\n"
           << nPts << "\n(\n";
+        const int nc = qMax(1, components);
         for (int i = 0; i < nPts; ++i) {
-            if (components == 3)
-                o << QString("  (%1 %2 %3)\n")
-                     .arg(i*3   < vals.size() ? vals[i*3]   : 0.0)
-                     .arg(i*3+1 < vals.size() ? vals[i*3+1] : 0.0)
-                     .arg(i*3+2 < vals.size() ? vals[i*3+2] : 0.0);
-            else
-                o << "  " << (i < vals.size() ? vals[i] : 0.0) << "\n";
+            QStringList comps;
+            for (int c = 0; c < nc; ++c) {
+                int k = i * nc + c;
+                comps << QString::number(k < vals.size() ? vals[k] : 0.0, 'g', 15);
+            }
+            if (nc > 1) o << "  (" << comps.join(' ') << ")\n";
+            else        o << "  " << comps.first() << "\n";
         }
         o << ")\n";
     }
@@ -1184,7 +1206,7 @@ bool DatasetPanel::writeBoundaryData(const QString& caseDir, const QString& patc
 }
 
 bool DatasetPanel::patchInletBC(const QString& caseDir, const QString& patch,
-                                 const QString& field)
+                                 const QString& field, int components)
 {
     QString bcFile = caseDir + "/0/" + field;
     QFile f(bcFile);
@@ -1192,18 +1214,30 @@ bool DatasetPanel::patchInletBC(const QString& caseDir, const QString& patch,
     QString src = QString::fromUtf8(f.readAll());
     f.close();
 
-    QRegularExpression re(
-        patch + R"(\s*\{[^}]*\})",
-        QRegularExpression::DotMatchesEverythingOption);
-    QString repl = patch + "\n    {\n"
-        "        type            timeVaryingMappedFixedValue;\n"
-        "        setAverage      off;\n"
-        "        offset          " + (field == "U" ? "(0 0 0)" : "0") + ";\n"
-        "        fieldName       " + field + ";\n"
-        "        perturb         0;\n"
-        "    }";
+    // Locate the patch as a whole-name, depth-1 entry of boundaryField and
+    // replace its full brace-matched dict (nested sub-dicts included), so
+    // "inlet" never matches "myinlet" and no stray '}' is left behind
+    const auto top = OFDict::topLevelEntries(src, 0, src.size());
+    const OFDict::DictEntry* bf = OFDict::findEntry(top, "boundaryField");
+    if (!bf || bf->braceOpen < 0 || bf->braceClose < 0) return false;
+    const auto patches = OFDict::topLevelEntries(src, bf->braceOpen + 1, bf->braceClose);
+    const OFDict::DictEntry* pe = OFDict::findEntry(patches, patch);
+    if (!pe || pe->braceOpen < 0 || pe->braceClose < 0) return false;
+
+    QStringList zeros;
+    for (int c = 0; c < qMax(1, components); ++c) zeros << "0";
+    const QString offset = components > 1 ? "(" + zeros.join(' ') + ")" : QString("0");
+
+    const QString ind = OFDict::lineIndent(src, pe->start);
+    QString repl = src.mid(pe->start, pe->keyEnd - pe->start) + "\n" + ind + "{\n"
+        + ind + "    type            timeVaryingMappedFixedValue;\n"
+        + ind + "    setAverage      off;\n"
+        + ind + "    offset          " + offset + ";\n"
+        + ind + "    fieldName       " + field + ";\n"
+        + ind + "    perturb         0;\n"
+        + ind + "}";
     QString patched = src;
-    patched.replace(re, repl);
+    patched.replace(pe->start, pe->end - pe->start, repl);
     if (patched == src) return false;
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     QTextStream(&f) << patched;
@@ -1300,7 +1334,8 @@ QVector<double> DatasetPanel::readPatchFaceCenters(const QString& caseDir,
 
 static QString buildSoapXml(const QString& method, const QString& token,
                               const QString& dataset, double time,
-                              const QVector<double>& points, int si, int ti,
+                              const QVector<double>& points,
+                              const QString& si, const QString& ti,
                               const QString& ns)
 {
     QString pts;
@@ -1330,8 +1365,8 @@ static QString buildSoapXml(const QString& method, const QString& token,
         "    </tns:%1>\n"
         "  </soap:Body>\n"
         "</soap:Envelope>")
-        .arg(method, token.isEmpty() ? "YOUR_TOKEN_HERE" : token,
-             dataset).arg(time).arg(si).arg(ti).arg(pts).arg(ns);
+        .arg(method, token.isEmpty() ? QString("YOUR_TOKEN_HERE") : token.toHtmlEscaped(),
+             dataset.toHtmlEscaped()).arg(time).arg(si, ti, pts, ns.toHtmlEscaped());
 }
 
 void DatasetPanel::onViewRequest()
@@ -1343,6 +1378,7 @@ void DatasetPanel::onViewRequest()
         {"pressure_gradient","GetPressureGradient"}
     };
     static const QMap<QString,int> siMap = {{"Lag4",4},{"Lag6",6},{"Lag8",8},{"None",0}};
+    using CFD::DatasetClient;
 
     QString endpoint = m_endpointEdit->text().trimmed();
     if (endpoint.isEmpty()) { log("[ERROR] Set an endpoint URL first."); return; }
@@ -1353,20 +1389,20 @@ void DatasetPanel::onViewRequest()
     QString field   = m_fieldCombo->currentText();
     QString method  = fieldToMethod.value(field, "GetVelocity");
     double  t       = m_timeSpin->value();
-    int     si      = siMap.value(m_spatialInterp->currentText(), 4);
-    int     ti      = m_temporalInterp->currentText() == "PCHIP" ? 1 : 0;
+    // Enum names exactly as DatasetClient sends them (JHTDB WSDL vocabulary)
+    QString si = DatasetClient::spatialInterpName(
+        static_cast<DatasetClient::SpatialInterp>(siMap.value(m_spatialInterp->currentText(), 4)),
+        method);
+    QString ti = DatasetClient::temporalInterpName(
+        m_temporalInterp->currentText() == "PCHIP" ? DatasetClient::TemporalInterp::PCHIP
+                                                   : DatasetClient::TemporalInterp::None);
 
     // Collect points
-    QVector<double> pts;
-    for (const QString& line :
-         m_pointsEdit->toPlainText().split('\n', Qt::SkipEmptyParts)) {
-        auto p = line.trimmed().split(' ', Qt::SkipEmptyParts);
-        if (p.size() >= 3) pts << p[0].toDouble() << p[1].toDouble() << p[2].toDouble();
-    }
+    QVector<double> pts = parsePointLines(m_pointsEdit->toPlainText());
     if (pts.isEmpty()) pts << 0.5 << 0.5 << 0.5;  // placeholder if none entered
 
     QString ns = endpoint.endsWith(".asmx", Qt::CaseInsensitive)
-                 ? QUrl(endpoint).adjusted(QUrl::RemoveFilename | QUrl::RemoveQuery).toString()
+                 ? DatasetClient::soapNamespace(endpoint)
                  : endpoint + "/";
     QString soapXml = buildSoapXml(method, token, dataset, t, pts, si, ti, ns);
     QString soapAction = QString("\"%1%2\"").arg(ns, method);
@@ -1411,8 +1447,8 @@ void DatasetPanel::onViewRequest()
         "# This is the full XML envelope sent as the POST body.\n"
         "# <tns:dataset>    : dataset name on the server\n"
         "# <tns:time>       : simulation time to query\n"
-        "# <tns:spatialInterpolation> : 0=None, 4=Lag4, 6=Lag6, 8=Lag8\n"
-        "# <tns:temporalInterpolation>: 0=None, 1=PCHIP\n"
+        "# <tns:spatialInterpolation> : None, Lag4, Lag6, Lag8 (gradients: None_Fd4, Fd4Lag4, ...)\n"
+        "# <tns:temporalInterpolation>: None, PCHIP\n"
         "# <tns:Point3>     : one query point; add as many as needed\n"
         "SOAP_BODY = \"\"\"%3\"\"\"\n\n"
         "#  Send the request \n"
@@ -1440,9 +1476,7 @@ void DatasetPanel::onViewRequest()
         "# root = ET.fromstring(resp.text)\n"
         "# for v in root.iter('Vector3'):\n"
         "#     print(v.find('x').text, v.find('y').text, v.find('z').text)\n\n"
-        "# ═══════════════════════════════════════════════════════════════════════\n"
         "# REST JSON server (alternative to SOAP)\n"
-        "# ═══════════════════════════════════════════════════════════════════════\n"
         "# If your server speaks JSON instead of SOAP, use this block instead.\n"
         "# Adjust the key names to match your API spec.\n"
         "# import json\n"
@@ -1569,10 +1603,14 @@ QString DatasetPanel::generatePythonCode() const
     QTextStream o(&code);
 
     bool useSoap = q.endpoint.endsWith(".asmx", Qt::CaseInsensitive);
-    QString ns   = useSoap
-                   ? QUrl(q.endpoint).adjusted(QUrl::RemoveFilename | QUrl::RemoveQuery).toString()
-                   : q.endpoint + "/";
+    QString ns   = useSoap ? CFD::DatasetClient::soapNamespace(q.endpoint)
+                           : q.endpoint + "/";
     QString method = soapMethod.value(q.field, "GetVelocity");
+    // Same element names / enum strings DatasetClient sends
+    const QString siName = CFD::DatasetClient::spatialInterpName(
+        static_cast<CFD::DatasetClient::SpatialInterp>(q.spatialInterp), method);
+    const QString tiName = CFD::DatasetClient::temporalInterpName(
+        static_cast<CFD::DatasetClient::TemporalInterp>(q.temporalInterp));
 
     o << "# Generated by CakeCFD Studio\n"
       << "# Endpoint: " << q.endpoint << "\n\n"
@@ -1603,8 +1641,8 @@ QString DatasetPanel::generatePythonCode() const
           << "      <tns:authToken>{AUTH_TOKEN}</tns:authToken>\n"
           << "      <tns:dataset>{DATASET}</tns:dataset>\n"
           << "      <tns:time>{time}</tns:time>\n"
-          << "      <tns:spatialInterp>" << q.spatialInterp << "</tns:spatialInterp>\n"
-          << "      <tns:temporalInterp>" << q.temporalInterp << "</tns:temporalInterp>\n"
+          << "      <tns:spatialInterpolation>" << siName << "</tns:spatialInterpolation>\n"
+          << "      <tns:temporalInterpolation>" << tiName << "</tns:temporalInterpolation>\n"
           << "      <tns:points>{pts_xml}</tns:points>\n"
           << "    </tns:" << method << ">\n"
           << "  </soap:Body>\n"

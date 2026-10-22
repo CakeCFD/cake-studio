@@ -19,6 +19,7 @@
 
 #include "SystemConfigPanel.h"
 #include <cmath>
+#include <algorithm>
 #include <QHBoxLayout>
 #include <QProcess>
 #include <QFile>
@@ -123,9 +124,9 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
     auto* stepsLbl = new QLabel("Steps:");
     stepsLbl->setStyleSheet("font-size:11px;");
     lay->addWidget(stepsLbl);
-    m_stepsSpin = new QDoubleSpinBox;
-    m_stepsSpin->setRange(0.0, 1e7);
-    m_stepsSpin->setDecimals(2);
+    m_stepsSpin = new GDoubleSpinBox;
+    m_stepsSpin->setRange(0.0, 1e9);
+    m_stepsSpin->setDecimals(10);   // transient endTime can be 0.001 or smaller
     m_stepsSpin->setSingleStep(0.5);
     m_stepsSpin->setValue(200.0);
     m_stepsSpin->setFixedWidth(80);
@@ -138,42 +139,37 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
     // controlDict (the solver config dialog, for one) triggers a refresh that
     // reloads these spinboxes from the file, so a value that was only sitting in
     // the widget would be silently replaced by the stale one on disk.
-    // editingFinished fires on user input only, not on programmatic setValue,
-    // so this cannot feed back into the refresh.
-    connect(m_stepsSpin, &QAbstractSpinBox::editingFinished, this, [this]() {
-        if (m_caseDir.isEmpty()) return;
-        writeDictVal(m_caseDir + "/system/controlDict", "endTime",
-                     QString::number(m_stepsSpin->value(), 'g', 6));
-    });
+    // editingFinished also fires on plain focus-out (and Return) with nothing
+    // edited, so writeControlDictIfEdited() only writes values that differ from
+    // what was last loaded from or written to the file.
+    connect(m_stepsSpin, &QAbstractSpinBox::editingFinished,
+            this, &SystemConfigPanel::writeControlDictIfEdited);
 
     auto* writeEveryLbl = new QLabel("Save every:");
     writeEveryLbl->setStyleSheet("font-size:11px;");
     lay->addWidget(writeEveryLbl);
-    m_writeEvery = new QSpinBox;
-    m_writeEvery->setRange(1, 100000);
+    // Double-valued: transient cases use writeInterval in seconds (0.0005)
+    m_writeEvery = new GDoubleSpinBox;
+    m_writeEvery->setRange(1e-9, 1e9);
+    m_writeEvery->setDecimals(10);
     m_writeEvery->setValue(100);
     m_writeEvery->setSingleStep(50);
     m_writeEvery->setFixedWidth(64);
-    m_writeEvery->setToolTip("controlDict writeInterval: write a result snapshot every N steps");
+    m_writeEvery->setToolTip("controlDict writeInterval: write a result snapshot every N steps "
+                             "(seconds for transient runTime control)");
     lay->addWidget(m_writeEvery);
 
-    connect(m_writeEvery, &QAbstractSpinBox::editingFinished, this, [this]() {
-        if (m_caseDir.isEmpty()) return;
-        writeDictVal(m_caseDir + "/system/controlDict", "writeInterval",
-                     QString::number(m_writeEvery->value()));
-    });
+    connect(m_writeEvery, &QAbstractSpinBox::editingFinished,
+            this, &SystemConfigPanel::writeControlDictIfEdited);
 
     connect(m_methodCombo, &QComboBox::currentTextChanged, this,
             [this](const QString& m) {
-                m_xyzWidget->setVisible(m == "simple" || m == "hierarchical");
+                const bool geometric = (m == "simple" || m == "hierarchical");
+                m_xyzWidget->setVisible(geometric);
+                if (geometric) resyncXyz();
             });
     connect(m_coresSpin, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            [this](int n) {
-                const QString& m = m_methodCombo->currentText();
-                if (m == "simple" || m == "hierarchical") {
-                    m_nx->setValue(n); m_ny->setValue(1); m_nz->setValue(1);
-                }
-            });
+            [this](int) { resyncXyz(); });
 
     lay->addWidget(makeSep());
 
@@ -314,10 +310,14 @@ void SystemConfigPanel::detect()
         m_coresSpin->setValue(qMax(1, m_physicalCores));
     }
 
+    // exitCode() is 0 when nvidia-smi is missing (FailedToStart), so check that
+    // the process really started and exited normally before trusting it
     QProcess smi;
     smi.start("nvidia-smi", {"--query-gpu=name,memory.total", "--format=csv,noheader,nounits"});
-    smi.waitForFinished(2000);
-    if (smi.exitCode() == 0) {
+    const bool started  = smi.waitForStarted(2000);
+    const bool finished = started && smi.waitForFinished(2000);
+    if (started && !finished) { smi.kill(); smi.waitForFinished(500); }
+    if (finished && smi.exitStatus() == QProcess::NormalExit && smi.exitCode() == 0) {
         for (const QString& line :
              QString::fromUtf8(smi.readAllStandardOutput()).trimmed().split('\n', Qt::SkipEmptyParts)) {
             QStringList p = line.split(',');
@@ -336,6 +336,8 @@ void SystemConfigPanel::detect()
                 m_vramMbLbl->setVisible(true);
             }
             onThemeChanged();  // apply accent colour now that GPU is known
+        } else {
+            m_gpuLabel->setText("No GPU detected");
         }
     } else {
         m_gpuLabel->setText("No GPU detected");
@@ -376,24 +378,17 @@ void SystemConfigPanel::setCaseDir(const QString& dir)
 
     // Only read controlDict into spinboxes when switching to a different case;
     // don't clobber values the user has already typed in the current session.
-    if (newCase) {
-        QString cd = dir + "/system/controlDict";
-        QString et = readDictVal(cd, "endTime");
-        QString wi = readDictVal(cd, "writeInterval");
-        if (!et.isEmpty() && m_stepsSpin) {
-            bool ok; double v = et.toDouble(&ok);
-            if (ok) m_stepsSpin->setValue(v);
-        }
-        if (!wi.isEmpty() && m_writeEvery) {
-            bool ok; int v = wi.toInt(&ok);
-            if (ok) m_writeEvery->setValue(v);
-        }
-    }
+    if (newCase) loadControlDict();
 }
 
 void SystemConfigPanel::refreshControlDict()
 {
     if (m_caseDir.isEmpty()) return;
+    loadControlDict();
+}
+
+void SystemConfigPanel::loadControlDict()
+{
     QString cd = m_caseDir + "/system/controlDict";
     QString et = readDictVal(cd, "endTime");
     QString wi = readDictVal(cd, "writeInterval");
@@ -404,20 +399,47 @@ void SystemConfigPanel::refreshControlDict()
     }
     if (!wi.isEmpty() && m_writeEvery) {
         bool ok; double v = wi.toDouble(&ok);
-        if (ok) m_writeEvery->setValue(static_cast<int>(std::round(v)));
+        if (ok) m_writeEvery->setValue(v);
+    }
+    // Sync point is whatever the widgets now show. A missing or non-numeric
+    // entry (#calc, $var) is then only overwritten if the user edits the box.
+    if (m_stepsSpin)  m_syncedEndTime       = m_stepsSpin->value();
+    if (m_writeEvery) m_syncedWriteInterval = m_writeEvery->value();
+}
+
+void SystemConfigPanel::writeControlDictIfEdited()
+{
+    if (m_caseDir.isEmpty()) return;
+    const QString cd = m_caseDir + "/system/controlDict";
+    auto same = [](double a, double b) {
+        return !std::isnan(b) && std::abs(a - b) <= 1e-12 * std::max(std::abs(a), std::abs(b));
+    };
+    if (m_stepsSpin && !same(m_stepsSpin->value(), m_syncedEndTime)) {
+        const double v = m_stepsSpin->value();
+        if (writeDictVal(cd, "endTime", QString::number(v, 'g', 10))) m_syncedEndTime = v;
+    }
+    if (m_writeEvery && !same(m_writeEvery->value(), m_syncedWriteInterval)) {
+        const double v = m_writeEvery->value();
+        if (writeDictVal(cd, "writeInterval", QString::number(v, 'g', 10))) m_syncedWriteInterval = v;
     }
 }
 
 void SystemConfigPanel::onApply()
 {
     writeDecomposeParDict();
-    if (!m_caseDir.isEmpty()) {
-        QString cd = m_caseDir + "/system/controlDict";
-        if (m_stepsSpin)
-            writeDictVal(cd, "endTime", QString::number(m_stepsSpin->value(), 'g', 6));
-        if (m_writeEvery) writeDictVal(cd, "writeInterval", QString::number(m_writeEvery->value()));
-    }
+    // Only values the user actually edited: onApply also runs right before every
+    // solver start, after other panels may have rewritten controlDict
+    writeControlDictIfEdited();
     onThemeChanged();
+}
+
+void SystemConfigPanel::resyncXyz()
+{
+    const QString m = m_methodCombo->currentText();
+    if (m != "simple" && m != "hierarchical") return;
+    const int n = m_coresSpin->value();
+    if (m_nx->value() * m_ny->value() * m_nz->value() == n) return;
+    m_nx->setValue(n); m_ny->setValue(1); m_nz->setValue(1);
 }
 
 void SystemConfigPanel::writeDecomposeParDict()
@@ -431,6 +453,12 @@ void SystemConfigPanel::writeDecomposeParDict()
     QString methodBlock;
     if (method == "simple" || method == "hierarchical") {
         int nx = m_nx->value(), ny = m_ny->value(), nz = m_nz->value();
+        // decomposePar aborts when the split does not cover every subdomain
+        if (nx * ny * nz != n) {
+            m_statusLbl->setText(QString("nx*ny*nz = %1 must equal Cores (%2): not written.")
+                                     .arg(nx * ny * nz).arg(n));
+            return;
+        }
         methodBlock = QString("method  %1;\n\n%1Coeffs\n{\n    n     ( %2 %3 %4 );\n    delta 0.001;\n    order xyz;\n}\n")
                           .arg(method).arg(nx).arg(ny).arg(nz);
         m_statusLbl->setText(QString("Written: %1 cores  %2  %3x%4x%5").arg(n).arg(method).arg(nx).arg(ny).arg(nz));

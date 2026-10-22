@@ -306,6 +306,18 @@ void MeshWizard::onGenerateCase()
     cp.nBoundaryLayers = m_nLayers->value();
     cp.inflowVelocity = m_velocity->value();
     cp.nu             = m_nu->value();
+    // BlockMeshWriter puts the inlet on the X-max face, so the flow runs in -X
+    cp.flowAxis       = "-X";
+
+    // snappyHexMesh controls from the Mesh tab
+    cp.maxGlobalCells       = m_maxGlobal->value();
+    cp.maxLocalCells        = m_maxLocal->value();
+    cp.surfaceRefinementMin = m_refMin->value();
+    cp.surfaceRefinementMax = m_refMax->value();
+    cp.resolveFeatureAngle  = m_featureAngle->value();
+    cp.layerExpansionRatio  = m_layerExpansion->value();
+    cp.firstLayerThickness  = m_firstLayerThick->value();
+    cp.minLayerThickness    = m_minThickness->value();
 
     static const QMap<QString,CFD::SolverType> solvers = {
         {"simpleFoam",   CFD::SolverType::SimpleFoam},
@@ -343,17 +355,19 @@ void MeshWizard::onRunMesh()
     setRunning(true);
     m_btnRunMesh->setEnabled(false);
 
-    QString of   = "source /usr/lib/openfoam/openfoam2412/etc/bashrc 2>/dev/null";
-    QString base = of + " && cd " + m_caseDir + " && ";
+    QString base = shellPrefix(m_caseDir);
 
-    log(" surfaceFeatureExtract ");
-    runCommand("bash -c '" + base + "surfaceFeatureExtract 2>&1'");
-    log(" blockMesh ");
-    runCommand("bash -c '" + base + "blockMesh 2>&1'");
-    log(" snappyHexMesh ");
-    runCommand("bash -c '" + base + "snappyHexMesh -overwrite 2>&1'");
-    log(" checkMesh ");
-    runCommand("bash -c '" + base + "checkMesh 2>&1'");
+    const QStringList steps = { "surfaceFeatureExtract", "blockMesh",
+                                "snappyHexMesh -overwrite", "checkMesh" };
+    for (const QString& step : steps) {
+        log(" " + step + " ");
+        if (!runCommand(base + step + " 2>&1")) {
+            m_status->setText("Mesh failed at " + step.section(' ', 0, 0) + ".");
+            m_btnRunMesh->setEnabled(true);
+            setRunning(false);
+            return;
+        }
+    }
 
     m_status->setText("Mesh complete.");
     m_btnRunSolver->setEnabled(true);
@@ -367,13 +381,13 @@ void MeshWizard::onRunSolver()
     m_btnRunSolver->setEnabled(false);
 
     QString solverBin = m_solver->currentText();
-    QString of   = "source /usr/lib/openfoam/openfoam2412/etc/bashrc 2>/dev/null";
-    QString base = of + " && cd " + m_caseDir + " && ";
+    QString base = shellPrefix(m_caseDir);
 
     log(" " + solverBin + " ");
-    runCommand("bash -c '" + base + solverBin + " 2>&1'");
+    const bool ok = runCommand(base + solverBin + " 2>&1");
 
-    m_status->setText("Solver finished.");
+    m_status->setText(ok ? "Solver finished." : "Solver failed.");
+    m_btnRunSolver->setEnabled(true);
     setRunning(false);
 }
 
@@ -384,20 +398,56 @@ void MeshWizard::log(const QString& msg)
     QApplication::processEvents();
 }
 
-void MeshWizard::runCommand(const QString& cmd)
+bool MeshWizard::runCommand(const QString& cmd)
 {
     QProcess proc;
     proc.setProcessChannelMode(QProcess::MergedChannels);
-    proc.start(cmd);
-    while (proc.waitForReadyRead(200)) {
-        QString out = proc.readAllStandardOutput();
-        for (const QString& line : out.split('\n'))
+    // Pass the command as a single argv entry: QProcess::start(QString) splits
+    // on whitespace and only honours double quotes, which breaks bash -c '...'.
+    proc.start("bash", { "-c", cmd });
+    if (!proc.waitForStarted(5000)) {
+        log("  [FAILED] could not start bash: " + proc.errorString());
+        return false;
+    }
+
+    // Keep partial lines between reads so output split across chunks is not mangled
+    QString pending;
+    auto drain = [&](bool flushAll) {
+        pending += QString::fromLocal8Bit(proc.readAllStandardOutput());
+        int nl;
+        while ((nl = pending.indexOf('\n')) >= 0) {
+            const QString line = pending.left(nl);
+            pending.remove(0, nl + 1);
             if (!line.trimmed().isEmpty()) m_log->append("  " + line);
+        }
+        if (flushAll && !pending.trimmed().isEmpty()) {
+            m_log->append("  " + pending);
+            pending.clear();
+        }
+    };
+
+    // Poll until the process exits; a quiet stretch (snappy, long solver
+    // iterations) must not end the loop, and the GUI stays responsive.
+    while (proc.state() != QProcess::NotRunning) {
+        proc.waitForReadyRead(100);
+        drain(false);
         QApplication::processEvents();
     }
     proc.waitForFinished(-1);
-    log(proc.exitCode() == 0 ? "  [OK]" : "  [FAILED] exit=" +
-        QString::number(proc.exitCode()));
+    drain(true);
+
+    const bool ok = (proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0);
+    log(ok ? "  [OK]" : "  [FAILED] exit=" + QString::number(proc.exitCode()));
+    return ok;
+}
+
+QString MeshWizard::shellPrefix(const QString& caseDir)
+{
+    // Single-quote the case dir for bash; an embedded ' becomes '\''
+    QString q = caseDir;
+    q.replace("'", "'\\''");
+    return "source /usr/lib/openfoam/openfoam2412/etc/bashrc 2>/dev/null && cd '"
+           + q + "' && ";
 }
 
 void MeshWizard::setRunning(bool on)

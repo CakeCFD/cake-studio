@@ -882,6 +882,7 @@ void ViewportWidget::loadOBJ(const QString& path) {
 
 void ViewportWidget::loadOFResults(const QString& caseDir)
 {
+    const bool caseChanged = (caseDir != m_caseDir);
     m_caseDir = caseDir;
 
     // Cache the inlet speed from 0/U. Nothing else assigns m_inletSpeed, so without
@@ -917,7 +918,27 @@ void ViewportWidget::loadOFResults(const QString& caseDir)
     }
     std::sort(timeSteps.begin(), timeSteps.end(),
               [](const QString& a, const QString& b){ return a.toDouble() < b.toDouble(); });
+    if (caseChanged || timeSteps.isEmpty()) {
+        // Drop the previous case's results: m_timeSteps indices and the cached
+        // datasets would otherwise point at another case's (or deleted) time dirs
+        m_resultActor->VisibilityOff();
+        m_isoActor->VisibilityOff();
+        m_streamActor->VisibilityOff();
+        m_lastDataSet      = nullptr;
+        m_volumeDataSet    = nullptr;
+        m_streamPointCache = nullptr;
+        m_timeSteps.clear();
+        m_availableFields.clear();
+        if (m_fieldCombo)  { QSignalBlocker b(m_fieldCombo); m_fieldCombo->clear(); }
+        if (m_timeSlider)  { QSignalBlocker b(m_timeSlider); m_timeSlider->setRange(0, 0); m_timeSlider->setEnabled(false); }
+        if (m_timeLabel)   m_timeLabel->setText("-");
+        if (m_btnIso)      { QSignalBlocker b(m_btnIso);    m_btnIso->setChecked(false); }
+        if (m_btnStream)   { QSignalBlocker b(m_btnStream); m_btnStream->setChecked(false); }
+        if (m_colorBar)    m_colorBar->setVisible(false);
+        if (m_fieldLabel)  m_fieldLabel->setText("-");
+    }
     if (timeSteps.isEmpty()) {
+        m_vtkWidget->renderWindow()->Render();
         return;
     }
     m_timeSteps = timeSteps;

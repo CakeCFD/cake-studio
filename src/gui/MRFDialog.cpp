@@ -18,6 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "MRFDialog.h"
+#include "BCEditorDialog.h"   // OFDict scanner
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -167,33 +168,29 @@ QList<MRFZone> MRFDialog::parseFile(const QString& text)
 {
     QList<MRFZone> zones;
 
-    // Find each top-level block: word { ... }
-    static QRegularExpression blockRe(R"((\b\w+)\s*\{)");
-    auto it = blockRe.globalMatch(text);
-    while (it.hasNext()) {
-        auto m = it.next();
-        QString bname = m.captured(1);
-        if (bname == "FoamFile") continue;
+    // Each depth-0 dict is a zone; nested dicts (eg. omega { type ...; })
+    // belong to their zone and are not zones themselves
+    for (const OFDict::DictEntry& e : OFDict::topLevelEntries(text, 0, text.size())) {
+        if (e.braceOpen < 0 || e.braceClose < 0 || e.key == "FoamFile") continue;
 
-        int bracePos = m.capturedEnd() - 1;
-        int depth = 0, j = bracePos, end = text.size() - 1;
-        while (j < text.size()) {
-            if (text[j] == '{')       ++depth;
-            else if (text[j] == '}') { if (!--depth) { end = j; break; } }
-            ++j;
-        }
-        QString body = text.mid(bracePos + 1, end - bracePos - 1);
+        const QString body = text.mid(e.braceOpen + 1, e.braceClose - e.braceOpen - 1);
+        const QList<OFDict::DictEntry> entries =
+            OFDict::topLevelEntries(body, 0, body.size());
 
         MRFZone z;
-        z.name = bname;
+        z.name = e.key;
 
         auto val = [&](const QString& key) -> QString {
-            QRegularExpression re(key + R"(\s+([^;]+)\s*;)");
-            auto m2 = re.match(body);
-            return m2.hasMatch() ? m2.captured(1).trimmed() : QString();
+            const OFDict::DictEntry* ke = OFDict::findEntry(entries, key);
+            if (!ke) return QString();
+            if (ke->braceOpen >= 0)   // dict form: hand back its contents
+                return body.mid(ke->braceOpen + 1, ke->braceClose - ke->braceOpen - 1);
+            return OFDict::entryValue(body, *ke);
         };
 
         z.cellZone = val("cellZone");
+        const QString act = val("active");
+        if (!act.isEmpty()) z.active = act;
 
         // origin ( x y z )
         QRegularExpression vecRe(R"(origin\s+\(\s*([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s*\))");
@@ -215,8 +212,9 @@ QList<MRFZone> MRFDialog::parseFile(const QString& text)
 
         // omega: stored as rad/s, convert to RPM for display
         QString omStr = val("omega");
-        // "omega constant 104.72" or "omega 104.72"
-        QRegularExpression omRe(R"([\d.eE+\-]+)");
+        // "omega constant 104.72", "omega 104.72" or "omega { type constant; value 104.72; }"
+        static const QRegularExpression omRe(
+            R"((?<![\w.])[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)");
         auto om = omRe.match(omStr);
         if (om.hasMatch())
             z.rpm = om.captured(0).toDouble() / RPM_TO_RADS;
@@ -245,7 +243,7 @@ QString MRFDialog::buildFile() const
         double omega = z.rpm * RPM_TO_RADS;
         out += z.name + "\n{\n";
         out += QString("    cellZone            %1;\n").arg(z.cellZone);
-        out += "    active              true;\n";
+        out += QString("    active              %1;\n").arg(z.active);
         out += QString("    nonRotatingPatches  (%1);\n").arg(z.nonRotPatches);
         out += QString("    origin              (%1 %2 %3);\n")
                    .arg(z.originX).arg(z.originY).arg(z.originZ);

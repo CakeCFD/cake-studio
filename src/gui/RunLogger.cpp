@@ -107,12 +107,21 @@ QString RunLogger::startRun(const QString& caseDir, const QString& solver)
     return runDir;
 }
 
-void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool converged)
+void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool converged,
+                          bool stopped)
 {
     if (runDir.isEmpty() || !QDir(runDir).exists()) return;
 
-    // Copy solver log
-    QString solver = detectSolver(caseDir);
+    QJsonObject meta;
+    {
+        QFile mf(runDir + "/metadata.json");
+        if (mf.open(QIODevice::ReadOnly))
+            meta = QJsonDocument::fromJson(mf.readAll()).object();
+    }
+
+    // Copy solver log: the solver recorded for this run wins over whatever
+    // other log.* files are lying around from earlier runs.
+    QString solver = detectSolver(caseDir, meta["solver"].toString());
     if (!solver.isEmpty()) {
         QString src = caseDir + "/log." + solver;
         QString dst = runDir  + "/results/log." + solver;
@@ -156,13 +165,8 @@ void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool co
     }
 
     // Update metadata.json
-    QJsonObject meta;
-    {
-        QFile mf(runDir + "/metadata.json");
-        if (mf.open(QIODevice::ReadOnly))
-            meta = QJsonDocument::fromJson(mf.readAll()).object();
-    }
     meta["converged"]  = converged;
+    meta["stopped"]    = stopped;
     meta["n_steps"]    = residuals.size();
     meta["final_time"] = residuals.isEmpty() ? 0.0 : residuals.last().time;
 
@@ -263,12 +267,15 @@ QList<RunInfo> RunLogger::listRuns(const QString& caseDir)
     for (const QString& runsPath : {caseDir + "/results/runs", caseDir + "/runs"}) {
         QDir runsDir(runsPath);
         if (!runsDir.exists()) continue;
-        for (const QFileInfo& fi : runsDir.entryInfoList({"run_*"}, QDir::Dirs, QDir::Name)) {
+        for (const QFileInfo& fi : runsDir.entryInfoList({"run_*"}, QDir::Dirs)) {
             RunInfo info = readRunInfo(fi.filePath());
             if (info.index > 0) result.append(info);
         }
         if (!result.isEmpty()) break;  // found runs in this location, don't double-count
     }
+    // Numeric order: by name, run_1000 would land between run_100 and run_101
+    std::sort(result.begin(), result.end(),
+              [](const RunInfo& a, const RunInfo& b) { return a.index < b.index; });
     return result;
 }
 
@@ -293,6 +300,7 @@ RunInfo RunLogger::readRunInfo(const QString& runDir)
     info.nCores     = meta["n_cores"].toString();
     info.timestamp  = meta["timestamp"].toString();
     info.converged  = meta["converged"].toBool();
+    info.stopped    = meta["stopped"].toBool();
     info.nSteps     = meta["n_steps"].toInt();
     info.finalTime  = meta["final_time"].toDouble();
 
@@ -307,13 +315,7 @@ RunInfo RunLogger::readRunInfo(const QString& runDir)
             info.divScheme = cfg["div_scheme"].toString();
     } else {
         // Old run (pre flow_config.json): reconstruct case dir from path
-        // runDir = <case>/results/runs/run_XXX  → go up 3 levels
-        QString reconstructed = QFileInfo(runDir).dir()   // runs/
-                                    .absolutePath();
-        reconstructed = QFileInfo(reconstructed).dir()    // results/
-                            .absolutePath();
-        reconstructed = QFileInfo(reconstructed).dir()    // case/
-                            .absolutePath();
+        QString reconstructed = caseDirForRun(runDir);
         if (QDir(reconstructed).exists()) {
             info.flowDir = reconstructed;
             static const QRegularExpression reNum(R"(^\d+\.?\d*$)");
@@ -352,7 +354,8 @@ bool RunLogger::generateReport(const RunInfo& info, const QString& outputPath)
     o << "# Cake Studio - Simulation Report\n\n";
     o << "| | |\n|---|---|\n";
     o << "| **Run** | " << info.index << " |\n";
-    o << "| **Case** | " << QFileInfo(info.path).dir().dirName() << " |\n";
+    const QString caseDir = caseDirForRun(info.path);
+    o << "| **Case** | " << QDir(caseDir).dirName() << " |\n";
     o << "| **Date** | " << info.timestamp << " |\n";
     o << "| **Solver** | " << (info.solver.isEmpty() ? "(not detected)" : info.solver) << " |\n\n";
 
@@ -378,7 +381,6 @@ bool RunLogger::generateReport(const RunInfo& info, const QString& outputPath)
     o << "\n";
 
     // mesh stats
-    QString caseDir = QFileInfo(info.path).dir().absolutePath();
     QMap<QString,QString> meshStats;
     for (const QString& name : {"log.checkMesh", "checkMesh.log"}) {
         QFile mf(caseDir + "/" + name);
@@ -418,7 +420,8 @@ bool RunLogger::generateReport(const RunInfo& info, const QString& outputPath)
         o << "| Total steps | " << info.nSteps << " |\n";
         o << "|---|---|\n";
         o << "| Final time | " << info.finalTime << " s |\n";
-        o << "| Status | " << (info.converged ? "**Converged**" : "**Did not converge**") << " |\n\n";
+        o << "| Status | " << (info.converged ? "**Converged**"
+                               : info.stopped ? "**Stopped by user**" : "**Did not converge**") << " |\n\n";
         o << "| Field | Final residual |\n|---|---|\n";
         for (auto it = info.finalResiduals.begin(); it != info.finalResiduals.end(); ++it)
             o << "| " << it.key() << " | " << QString::number(it.value(), 'e', 4) << " |\n";
@@ -496,9 +499,24 @@ void RunLogger::copyInputs(const QString& caseDir, const QString& inputsDir)
         QFile::copy(caseDir + "/0/U", inputsDir + "/U");
 }
 
-QString RunLogger::detectSolver(const QString& caseDir)
+QString RunLogger::caseDirForRun(const QString& runDir)
 {
-    // Ordered by frequency: first match wins
+    // runDir is <case>/results/runs/run_XXX, or <case>/runs/run_XXX for legacy runs
+    QDir d = QFileInfo(runDir).dir();
+    if (d.dirName() == "runs") {
+        d.cdUp();
+        if (d.dirName() == "results" && !QFile::exists(d.absolutePath() + "/system/controlDict"))
+            d.cdUp();
+    }
+    return d.absolutePath();
+}
+
+QString RunLogger::detectSolver(const QString& caseDir, const QString& preferred)
+{
+    if (!preferred.isEmpty() && QFile::exists(caseDir + "/log." + preferred))
+        return preferred;
+
+    // Several solver logs can coexist after switching solvers: the newest wins
     static const QStringList knownSolvers = {
         // Incompressible steady/transient
         "simpleFoam", "pimpleFoam", "pisoFoam", "icoFoam",
@@ -522,11 +540,18 @@ QString RunLogger::detectSolver(const QString& caseDir)
         // Electromagnetics
         "magneticFoam",
     };
+    QString best;
+    QDateTime bestTime;
     for (const QString& s : knownSolvers) {
-        if (QFile::exists(caseDir + "/log." + s)) return s;
+        QFileInfo fi(caseDir + "/log." + s);
+        if (fi.exists() && (best.isEmpty() || fi.lastModified() > bestTime)) {
+            best = s;
+            bestTime = fi.lastModified();
+        }
     }
-    // Fallback: pick any log.* file
-    for (const QFileInfo& fi : QDir(caseDir).entryInfoList({"log.*"}, QDir::Files)) {
+    if (!best.isEmpty()) return best;
+    // Fallback: pick the newest log.* file
+    for (const QFileInfo& fi : QDir(caseDir).entryInfoList({"log.*"}, QDir::Files, QDir::Time)) {
         int dot = fi.fileName().indexOf('.');
         if (dot >= 0) return fi.fileName().mid(dot + 1);
     }

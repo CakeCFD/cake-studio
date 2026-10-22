@@ -38,6 +38,10 @@ inline bool isCompressible(SolverType s) {
     return s == SolverType::RhoSimpleFoam;
 }
 
+inline bool isTransient(SolverType s) {
+    return s == SolverType::IcoFoam || s == SolverType::PimpleFoam;
+}
+
 inline bool isLES(TurbulenceModel m) {
     return m == TurbulenceModel::Smagorinsky
         || m == TurbulenceModel::DynamicKEqn
@@ -69,12 +73,24 @@ struct CaseParams {
     QString         divScheme        = "linearUpwind"; // "linearUpwind" | "teno" | "teno6"
     double          inflowVelocity   = 1.0;    // m/s along flow axis; used if patchBCs is empty
     double          aoaDeg           = 0.0;    // angle of attack, degrees (pitch about Y, +ve = nose up)
-    QString         flowAxis         = "+X";   // inlet direction: +X/-X/+Y/-Y/+Z/-Z
+    // Flow direction. BlockMeshWriter puts the inlet on the X-max face, so the
+    // flow must run in -X or the inlet velocity points out of the domain.
+    QString         flowAxis         = "-X";   // flow direction: +X/-X/+Y/-Y/+Z/-Z
     double          nu               = 1.5e-5; // kinematic viscosity m^2/s (air)
     double          meshPadding      = 0.5;    // fraction of bbox on each side
     int             bgMeshCells      = 40;     // background mesh cells per direction
     int             nBoundaryLayers  = 3;
     double          surfaceRefinementLinear = 0.5; // % of bbox diagonal
+
+    // snappyHexMesh controls (defaults match SnappyParams)
+    int             maxGlobalCells       = 2000000;
+    int             maxLocalCells        = 100000;
+    int             surfaceRefinementMin = 2;
+    int             surfaceRefinementMax = 3;
+    int             resolveFeatureAngle  = 30;
+    double          layerExpansionRatio  = 1.2;
+    double          firstLayerThickness  = 0.3;
+    double          minLayerThickness    = 0.1;
 
     // Per-patch BCs set from the GUI table.
     // When empty, writeBoundaryConditions falls back to the auto mode using inflowVelocity.
@@ -99,7 +115,8 @@ public:
 
 private:
     static bool writeFvSchemes(const QString& systemDir, bool les, bool compressible,
-                              const QString& divScheme = "linearUpwind");
+                              const QString& divScheme = "linearUpwind",
+                              bool transient = false);
     static bool writeFvSolution(const QString& systemDir, SolverType solver);
     static bool writeControlDict(const QString& systemDir, SolverType solver,
                                   const QString& caseName,

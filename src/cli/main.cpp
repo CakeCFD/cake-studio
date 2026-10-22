@@ -52,9 +52,19 @@ static void log(const std::string& msg, bool jsonMode) {
     if (!jsonMode) std::cout << msg << "\n" << std::flush;
 }
 
+// Wrap s in single quotes for bash; an embedded ' becomes '\''
+static std::string shQuote(const std::string& s) {
+    std::string out = "'";
+    for (char c : s) {
+        if (c == '\'') out += "'\\''";
+        else out += c;
+    }
+    return out + "'";
+}
+
 static int shell(const std::string& cmd, bool jsonMode) {
     log("  $ " + cmd, jsonMode);
-    int r = std::system(("bash -c '" + cmd + "'").c_str());
+    int r = std::system(("bash -c " + shQuote(cmd)).c_str());
     log(r == 0 ? "  [OK]" : "  [FAILED]", jsonMode);
     return r;
 }
@@ -144,6 +154,18 @@ int main(int argc, char* argv[])
     cp.meshPadding     = cfg.meshPadding;
     cp.bgMeshCells     = cfg.bgMeshCells;
     cp.nBoundaryLayers = cfg.nBoundaryLayers;
+    // BlockMeshWriter puts the inlet on X-max, so the flow runs in -X
+    cp.flowAxis        = "-X";
+
+    // snappyHexMesh controls from the mesh: section
+    cp.maxGlobalCells       = cfg.maxGlobalCells;
+    cp.maxLocalCells        = cfg.maxLocalCells;
+    cp.surfaceRefinementMin = cfg.surfaceRefinementMin;
+    cp.surfaceRefinementMax = cfg.surfaceRefinementMax;
+    cp.resolveFeatureAngle  = cfg.resolveFeatureAngle;
+    cp.layerExpansionRatio  = cfg.layerExpansionRatio;
+    cp.firstLayerThickness  = cfg.firstLayerThickness;
+    cp.minLayerThickness    = cfg.minThickness;
 
     // Generate case
     log("[" + std::to_string(ms()) + "ms] Generating OpenFOAM case...", jsonMode);
@@ -162,9 +184,10 @@ int main(int argc, char* argv[])
 
     // Run OF pipeline
     int meshRC = 0;
+    int solverRC = 0;
     if (cfg.runMesh) {
         std::string of  = "source /usr/lib/openfoam/openfoam2412/etc/bashrc 2>/dev/null";
-        std::string cdc = "cd " + caseDir;
+        std::string cdc = "cd " + shQuote(caseDir);
         std::string base = of + " && " + cdc + " && ";
 
         log("[" + std::to_string(ms()) + "ms] surfaceFeatureExtract...", jsonMode);
@@ -185,18 +208,24 @@ int main(int argc, char* argv[])
 
     if (cfg.runSolver && meshRC == 0) {
         std::string of  = "source /usr/lib/openfoam/openfoam2412/etc/bashrc 2>/dev/null";
-        std::string cdc = "cd " + caseDir;
+        std::string cdc = "cd " + shQuote(caseDir);
         std::string base = of + " && " + cdc + " && ";
         std::string solver = cfg.solver;
         log("[" + std::to_string(ms()) + "ms] Running solver: " + solver, jsonMode);
-        shell(base + solver + " > log." + solver + " 2>&1", jsonMode);
+        if (shell(base + solver + " > log." + solver + " 2>&1", jsonMode) != 0) {
+            solverRC = 2;
+            if (!jsonMode)
+                std::cerr << "Solver " << solver << " failed; see "
+                          << caseDir << "/log." << solver << "\n";
+        }
     }
 
 done:
     // Output
     if (jsonMode) {
         std::cout << "{\n"
-            << jkv("status", meshRC == 0 ? "ok" : "mesh_failed") << "\n"
+            << jkv("status", meshRC != 0   ? "mesh_failed"
+                           : solverRC != 0 ? "solver_failed" : "ok") << "\n"
             << jkv("case_dir", caseDir) << "\n"
             << jkvn("bounds_xmin", bounds[0]) << "\n"
             << jkvn("bounds_xmax", bounds[1]) << "\n"
@@ -214,5 +243,5 @@ done:
         std::cout << "Case: " << caseDir << "\n";
     }
 
-    return meshRC;
+    return meshRC != 0 ? meshRC : solverRC;
 }

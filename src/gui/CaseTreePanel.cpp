@@ -21,6 +21,7 @@
 #include "CaseTreePanel.h"
 #include "ViewportWidget.h"
 #include "DomainSetupDialog.h"
+#include <algorithm>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -263,7 +264,9 @@ void CaseTreePanel::populate()
         bool ok; double v = e.toDouble(&ok);
         if (ok && v > 0) m_timeSteps << e;
     }
-    m_timeSteps.sort();
+    // Numeric order (0.5 < 2 < 10): indices must match ViewportWidget's time list
+    std::sort(m_timeSteps.begin(), m_timeSteps.end(),
+              [](const QString& a, const QString& b) { return a.toDouble() < b.toDouble(); });
     if (!m_timeSteps.isEmpty()) {
         for (int i = 0; i < m_timeSteps.size(); ++i) {
             auto* ti = new QTreeWidgetItem(resSec, QStringList{"t = " + m_timeSteps[i]});
@@ -560,17 +563,25 @@ void CaseTreePanel::addGeometryFile()
         "Geometry Files (*.stl *.STL *.obj *.OBJ)");
     if (src.isEmpty()) return;
 
-    // Wipe all existing geometry so only one mesh lives in the project at a time
+    // Wipe all existing geometry so only one mesh lives in the project at a time,
+    // except the chosen file itself when it already lives in triSurface
     QString triSurfPath = m_caseDir + "/constant/triSurface";
+    QString dest = triSurfPath + "/" + QFileInfo(src).fileName();
+    const QString srcCanon = QFileInfo(src).canonicalFilePath();
+    const bool inPlace = (srcCanon == QFileInfo(dest).canonicalFilePath());
     QDir triSurf(triSurfPath);
     if (triSurf.exists()) {
-        for (const QString& f : triSurf.entryList({"*.stl","*.STL","*.obj","*.OBJ"}, QDir::Files))
-            triSurf.remove(f);
+        for (const QFileInfo& fi : triSurf.entryInfoList({"*.stl","*.STL","*.obj","*.OBJ"}, QDir::Files)) {
+            if (fi.canonicalFilePath() == srcCanon) continue;
+            triSurf.remove(fi.fileName());
+        }
     }
 
-    QString dest = triSurfPath + "/" + QFileInfo(src).fileName();
     QDir().mkpath(triSurfPath);
-    QFile::copy(src, dest);
+    if (!inPlace) {
+        QFile::remove(dest);
+        QFile::copy(src, dest);
+    }
     refresh();
     if (m_viewport) {
         if (dest.endsWith(".stl", Qt::CaseInsensitive)) m_viewport->loadSTL(dest);
@@ -646,8 +657,11 @@ void CaseTreePanel::dropEvent(QDropEvent* e)
             !src.endsWith(".obj", Qt::CaseInsensitive)) continue;
 
         QString dest = m_caseDir + "/constant/triSurface/" + QFileInfo(src).fileName();
-        if (QFile::exists(dest)) QFile::remove(dest);
-        QFile::copy(src, dest);
+        // Dropping a file that already lives in triSurface: removing dest would delete the source
+        if (QFileInfo(src).canonicalFilePath() != QFileInfo(dest).canonicalFilePath()) {
+            if (QFile::exists(dest)) QFile::remove(dest);
+            QFile::copy(src, dest);
+        }
 
         if (m_viewport) {
             if (dest.endsWith(".stl", Qt::CaseInsensitive)) m_viewport->loadSTL(dest);

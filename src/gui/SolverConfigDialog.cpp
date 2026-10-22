@@ -132,28 +132,46 @@ SolverConfigDialog::SolverConfigDialog(const QString& solver,
             m_sgsModel->setVisible(false);
             if (auto* lbl = form->labelForField(m_sgsModel)) lbl->setVisible(false);
 
+            m_rasModel = new QComboBox;
+            m_rasModel->addItem("kOmegaSST",       QString("kOmegaSST"));
+            m_rasModel->addItem("SpalartAllmaras", QString("SpalartAllmaras"));
+            m_rasModel->addItem("kEpsilon",        QString("kEpsilon"));
+            form->addRow("RAS model:", m_rasModel);
+
             connect(m_simType, &QComboBox::currentTextChanged, this, [this, form](const QString& t){
                 const bool les = (t == "LES");
                 m_sgsModel->setVisible(les);
                 if (auto* lbl = form->labelForField(m_sgsModel)) lbl->setVisible(les);
+                m_rasModel->setVisible(!les);
+                if (auto* lbl = form->labelForField(m_rasModel)) lbl->setVisible(!les);
             });
         }
 
-        // Pre-select sim type and SGS model from existing turbulenceProperties
+        // Pre-select sim type and RAS/SGS model from the existing turbulenceProperties
+        // (or momentumTransport) so a model chosen in the mesh tools is preserved.
+        // Accepts both the "model" keyword and the RASModel/LESModel spelling.
         if (m_simType) {
             for (const QString& name : { QString("turbulenceProperties"), QString("momentumTransport") }) {
                 QFile tf(m_caseDir + "/constant/" + name);
                 if (!tf.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
                 QString txt = tf.readAll();
-                if (txt.contains("simulationType LES")) {
+                QRegularExpression re(R"(\b(?:RAS|LES)?[Mm]odel\s+(\w+)\s*;)");
+                auto mm = re.match(txt);
+                const QString cur = mm.hasMatch() ? mm.captured(1) : QString();
+                if (txt.contains(QRegularExpression(R"(simulationType\s+LES\s*;)"))) {
                     m_simType->setCurrentIndex(m_simType->findData(QString("LES")));
                     // triggers the connect handler which shows m_sgsModel + its label
-                    QRegularExpression re(R"(\bmodel\s+(\w+)\s*;)");
-                    auto mm = re.match(txt);
-                    if (mm.hasMatch()) {
-                        int idx = m_sgsModel->findData(mm.captured(1));
-                        if (idx >= 0) m_sgsModel->setCurrentIndex(idx);
+                    if (!cur.isEmpty()) {
+                        int idx = m_sgsModel->findData(cur);
+                        if (idx < 0) { m_sgsModel->addItem(cur, cur); idx = m_sgsModel->count() - 1; }
+                        m_sgsModel->setCurrentIndex(idx);
                     }
+                } else if (txt.contains(QRegularExpression(R"(simulationType\s+RAS\s*;)"))
+                           && !cur.isEmpty()) {
+                    // Keep any RAS model, including ones not in the default list
+                    int idx = m_rasModel->findData(cur);
+                    if (idx < 0) { m_rasModel->addItem(cur, cur); idx = m_rasModel->count() - 1; }
+                    m_rasModel->setCurrentIndex(idx);
                 }
                 break;
             }
@@ -216,7 +234,6 @@ SolverConfigDialog::SolverConfigDialog(const QString& solver,
 
     // Wire up Mach display for compressible solvers
     if (m_machLbl) {
-        auto update = [this]{ updateMachDisplay(); };
         connect(m_inletVel, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &SolverConfigDialog::updateMachDisplay);
         if (m_refTemp)    connect(m_refTemp,    QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &SolverConfigDialog::updateMachDisplay);
         if (m_cp)         connect(m_cp,         QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &SolverConfigDialog::updateMachDisplay);
@@ -439,21 +456,28 @@ void SolverConfigDialog::patchControlDictTransient()
         // only normalised when the current value looks like a leftover from a
         // transient run (a fractional or very small number of seconds). A value
         // of 10 or more is a deliberate iteration count and is preserved.
+        // Both regexes are anchored to top-level entries so the forces function
+        // object's own writeInterval is never touched.
         {
-            QRegularExpression etRe(R"(endTime\s+([\d.eE+\-]+)\s*;)");
+            QRegularExpression etRe(R"(^([ \t]{0,4})endTime[ \t]+([\d.eE+\-]+)[ \t]*;)",
+                                    QRegularExpression::MultilineOption);
             auto m = etRe.match(txt);
             bool ok = false;
-            const double cur = m.hasMatch() ? m.captured(1).toDouble(&ok) : 0.0;
-            if (!m.hasMatch() || (ok && cur < 10.0))
-                txt.replace(etRe, "endTime         200;");
+            const double cur = m.hasMatch() ? m.captured(2).toDouble(&ok) : 0.0;
+            if (m.hasMatch() && ok && cur < 10.0)
+                txt.replace(etRe, "\\1endTime         200;");
         }
         {
-            QRegularExpression wiRe(R"(writeInterval\s+([\d.eE+\-]+)\s*;)");
+            // Only a non-integer value below 1 is clearly a transient write
+            // interval in seconds; small integers such as 5 are valid steady
+            // iteration intervals and are kept.
+            QRegularExpression wiRe(R"(^([ \t]{0,4})writeInterval[ \t]+([\d.eE+\-]+)[ \t]*;)",
+                                    QRegularExpression::MultilineOption);
             auto m = wiRe.match(txt);
             bool ok = false;
-            const double cur = m.hasMatch() ? m.captured(1).toDouble(&ok) : 0.0;
-            if (!m.hasMatch() || (ok && cur < 10.0))
-                txt.replace(wiRe, "writeInterval   100;");
+            const double cur = m.hasMatch() ? m.captured(2).toDouble(&ok) : 0.0;
+            if (m.hasMatch() && ok && cur < 1.0 && cur != std::floor(cur))
+                txt.replace(wiRe, "\\1writeInterval   100;");
         }
         QFile wf(ctlPath);
         if (wf.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -626,9 +650,10 @@ void SolverConfigDialog::writeTurbulenceModel()
                "    dynamicKEqnCoeffs { filter simple; }\n" : "")
             + "}\n";
     } else {
+        const QString ras = m_rasModel ? m_rasModel->currentData().toString() : "kOmegaSST";
         content = hdr
             + "simulationType RAS;\n\nRAS\n{\n"
-            + "    model       kOmegaSST;\n"
+            + "    model       " + ras + ";\n"
             + "    turbulence  on;\n"
             + "    printCoeffs on;\n"
             + "}\n";
@@ -665,6 +690,25 @@ void SolverConfigDialog::writeThermophysicalProperties()
                          .arg(m_mu->value(), 0, 'g', 8).arg(m_pr->value(), 0, 'f', 6);
     }
 
+    // janaf reads 7-coefficient NASA polynomials, not Cp/Hf. The coefficients
+    // below are the standard air set used by the OpenFOAM tutorials.
+    QString thermoBlock;
+    if (m_thermo->currentText() == "janaf") {
+        thermoBlock =
+            "    thermodynamics\n    {\n"
+            "        Tlow            200;\n"
+            "        Thigh           3500;\n"
+            "        Tcommon         1000;\n"
+            "        highCpCoeffs    ( 3.57304 -7.24383e-04 1.67022e-06 -1.26501e-10"
+            " -4.20580e-13 -1047.41 3.12431 );\n"
+            "        lowCpCoeffs     ( 3.09589 1.22835e-03 -4.14267e-07 6.56910e-11"
+            " -3.87021e-15 -983.191 5.34161 );\n"
+            "    }\n";
+    } else {
+        thermoBlock = QString("    thermodynamics  { Cp %1; Hf %2; }\n")
+                      .arg(m_cp->value()).arg(m_hf->value());
+    }
+
     const QString energy = m_isCentral ? "sensibleInternalEnergy" : "sensibleEnthalpy";
 
     QFile f(m_caseDir + "/constant/thermophysicalProperties");
@@ -691,7 +735,7 @@ void SolverConfigDialog::writeThermophysicalProperties()
                   return "rho 1.225;";
               return "";   // perfectGas: no params needed
          }() << " }\n"
-      << "    thermodynamics  { Cp " << m_cp->value() << "; Hf " << m_hf->value() << "; }\n"
+      << thermoBlock
       << transportBlock
       << "}\n";
 }
@@ -710,7 +754,7 @@ void SolverConfigDialog::writeFvSchemes()
     const QString divUScheme = m_isLaminar        ? "Gauss linearUpwind grad(U)"
                              : (divSch == "teno")  ? "Gauss teno"
                              : (divSch == "teno6") ? "Gauss teno6"
-                             : "Gauss linearUpwindV grad(U)";
+                             : "Gauss linearUpwind grad(U)";
 
     // rhoCentralFoam: density-based explicit solver; reconstruct(phi,X) not div(phi,X)
     if (m_isCentral) {
@@ -848,23 +892,27 @@ void SolverConfigDialog::writeFvSolution()
         // incompressible (simpleFoam/pimpleFoam/icoFoam) and compressible SIMPLE (rhoSimpleFoam/rhoPimpleFoam)
         o << "    p       { solver GAMG; smoother GaussSeidel; tolerance 1e-7; relTol 0.01; }\n"
           << "    pFinal  { $p; relTol 0; }\n";
-        // smoothSolver+symGaussSeidel for U: more robust than GAMG on complex/non-orthogonal meshes
-        o << "    U  { solver smoothSolver; smoother symGaussSeidel; tolerance 1e-8; relTol 0.1; }\n"
-          << "    UFinal { $U; relTol 0; }\n";
+        // Steady: smoothSolver+symGaussSeidel for U (more robust than GAMG on complex/non-orthogonal
+        // meshes). Transient: PBiCGStab+DILU.
+        if (m_isTransient)
+            o << "    U  { solver PBiCGStab; preconditioner DILU; tolerance 1e-8; relTol 0.1; }\n";
+        else
+            o << "    U  { solver smoothSolver; smoother symGaussSeidel; tolerance 1e-8; relTol 0.1; }\n";
+        o << "    UFinal { $U; relTol 0; }\n";
         if (!m_isLaminar)
             o << "    \"(k|omega|epsilon|nuTilda|kFinal|omegaFinal|epsilonFinal|nuTildaFinal)\""
               << " { solver smoothSolver; smoother GaussSeidel; tolerance 1e-8; relTol 0.1; }\n";
         if (m_isCompressible) {
             o << "    h       { solver smoothSolver; smoother GaussSeidel; tolerance 1e-8; relTol 0.1; }\n"
               << "    hFinal  { $h; relTol 0; }\n"
-              << "    rho     { solver diagonal; }\n";
+              << "    \"rho.*\" { solver diagonal; }\n";  // rho and rhoFinal (PIMPLE)
         }
     }
 
     o << "}\n\n";
 
-    // Algorithm block
-    if (m_solver == "icoFoam") {
+    // Algorithm block: icoFoam and pisoFoam read PISO, not PIMPLE
+    if (m_solver == "icoFoam" || m_solver == "pisoFoam") {
         const int nCorr = m_nCorrectors ? m_nCorrectors->value() : 2;
         o << "PISO\n{\n"
           << "    nCorrectors             " << nCorr    << ";\n"
@@ -925,7 +973,8 @@ void SolverConfigDialog::writeZeroFields(const QList<PatchInfo>& patches)
     // 0/U - velocity vector respects domain flow axis and AoA from domain setup
     {
         // Read flow axis and AoA from QSettings (written by DomainSetupDialog on Generate)
-        QString flowAxis = QSettings().value("domainSetup/flowAxis", "+X").toString();
+        // Default -X: blockMesh puts the inlet on the X-max face
+        QString flowAxis = QSettings().value("domainSetup/flowAxis", "-X").toString();
         double  aoaDeg   = QSettings().value("domainSetup/aoa",      0.0).toDouble();
         double  aoaRad   = aoaDeg * M_PI / 180.0;
 
@@ -1008,6 +1057,10 @@ void SolverConfigDialog::writeZeroFields(const QList<PatchInfo>& patches)
 
     // 0/k, 0/omega, 0/nut: turbulence fields for all non-laminar solvers
     if (!m_isLaminar) {
+        const bool isRAS = !(m_simType && m_simType->currentData().toString() == "LES");
+        const QString rasModel = m_rasModel ? m_rasModel->currentData().toString() : "kOmegaSST";
+        const bool isSA = isRAS && rasModel == "SpalartAllmaras";
+        const bool isKE = isRAS && rasModel == "kEpsilon";
         const double k0 = 1.5 * std::pow(0.05 * vel, 2.0);  // 5% turbulence intensity
 
         // omega = k / (TVR * nu), TVR=10 targets nut/nu=10 at inlet (Menter 1994: farfield TVR 0.1-10)
@@ -1080,8 +1133,54 @@ void SolverConfigDialog::writeZeroFields(const QList<PatchInfo>& patches)
                     if (type == "symmetry" || type == "symmetryPlane" || type == "empty")
                         return "type " + type + ";";
                     if (type == "wall")
-                        return "type nutkWallFunction; value uniform 0;";
+                        // nutkWallFunction needs k, which Spalart-Allmaras does not solve
+                        return isSA ? "type nutUSpaldingWallFunction; value uniform 0;"
+                                    : "type nutkWallFunction; value uniform 0;";
                     return "type calculated; value uniform 0;";
+                });
+            }
+        }
+
+        // 0/nuTilda (Spalart-Allmaras)
+        if (isSA) {
+            const double nuTilda0 = 5.0 * nu_est;
+            QFile::remove(m_caseDir + "/0/nuTilda");
+            QFile f(m_caseDir + "/0/nuTilda");
+            if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                QTextStream o(&f);
+                o << "FoamFile\n{ version 2.0; format ascii; class volScalarField; object nuTilda; }\n\n"
+                  << "dimensions [0 2 -1 0 0 0 0];\n"
+                  << "internalField uniform " << nuTilda0 << ";\n";
+                writeBoundaryField(o, patches, [&](const QString& name, const QString& type) -> QString {
+                    if (type == "symmetry" || type == "symmetryPlane" || type == "empty")
+                        return "type " + type + ";";
+                    if (type == "wall")
+                        return "type fixedValue; value uniform 0;";
+                    if (name == "inlet")
+                        return QString("type fixedValue; value uniform %1;").arg(nuTilda0);
+                    return "type zeroGradient;";
+                });
+            }
+        }
+
+        // 0/epsilon (kEpsilon): epsilon = Cmu * k * omega
+        if (isKE) {
+            const double eps0 = 0.09 * k0 * omega0;
+            QFile::remove(m_caseDir + "/0/epsilon");
+            QFile f(m_caseDir + "/0/epsilon");
+            if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                QTextStream o(&f);
+                o << "FoamFile\n{ version 2.0; format ascii; class volScalarField; object epsilon; }\n\n"
+                  << "dimensions [0 2 -3 0 0 0 0];\n"
+                  << "internalField uniform " << eps0 << ";\n";
+                writeBoundaryField(o, patches, [&](const QString& name, const QString& type) -> QString {
+                    if (type == "symmetry" || type == "symmetryPlane" || type == "empty")
+                        return "type " + type + ";";
+                    if (type == "wall")
+                        return QString("type epsilonWallFunction; value uniform %1;").arg(eps0);
+                    if (name == "inlet")
+                        return QString("type fixedValue; value uniform %1;").arg(eps0);
+                    return "type zeroGradient;";
                 });
             }
         }

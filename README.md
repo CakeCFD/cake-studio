@@ -17,7 +17,7 @@ requiring a separate X server.
 CakeCFD is free software: you can redistribute it and/or modify it under the terms
 of the GNU General Public License as published by the Free Software Foundation,
 either version 3 of the License, or (at your option) any later version. See the file
-`LICENSE` in this directory, or <https://www.gnu.org/licenses/>, for a description of
+LICENSE in this directory, or <https://www.gnu.org/licenses/>, for a description of
 the GNU General Public License terms under which you can copy the files.
 
 ## Features
@@ -32,13 +32,13 @@ Verification status: the schemes as shipped measure second order on smooth linea
 advection, not the fifth and sixth order of the reference formulation. The
 reconstruction currently reduces to central differencing in smooth regions, which
 is deliberate for pressure-velocity stability but caps the achievable order. The
-measurements are reproducible with `validation/tools/advection_order.py` (case
+measurements are reproducible with validation/tools/advection_order.py (case
 VC-001). Work toward the full design order is in progress on the
-`teno-kexact-wip` branch, where a k-exact upwind-biased reconstruction reaches
+teno-kexact-wip branch, where a k-exact upwind-biased reconstruction reaches
 approximately fifth order on the same test.
 
-Supported solvers: `simpleFoam`, `icoFoam`, `pimpleFoam`, `pisoFoam`, `rhoSimpleFoam`,
-`rhoPimpleFoam`, `rhoCentralFoam`, `buoyantSimpleFoam` and `buoyantPimpleFoam`.
+Supported solvers: simpleFoam, icoFoam, pimpleFoam, pisoFoam, rhoSimpleFoam,
+rhoPimpleFoam, rhoCentralFoam, buoyantSimpleFoam and buoyantPimpleFoam.
 
 Supported turbulence models: k-omega SST, k-epsilon and Spalart-Allmaras.
 
@@ -58,14 +58,14 @@ A native C++ Qt5 application providing dark and light themes, a 3D VTK viewport 
 velocity, pressure and turbulence fields, isocontours and streamline tracing, a live
 residual plot during solver runs, and a solver console with autocompletion, command
 history and filtered output. A per solver configuration dialog writes the required
-OpenFOAM case files, including `fvSchemes`, `fvSolution` and initial fields, from
+OpenFOAM case files, including fvSchemes, fvSolution and initial fields, from
 values entered in the interface.
 
 ### Dataset manager
 
 The Johns Hopkins Turbulence Database is integrated as the default data source,
 allowing direct numerical simulation turbulence data to be queried from the
-interface and exported to an OpenFOAM `timeVaryingMappedFixedValue` boundary
+interface and exported to an OpenFOAM timeVaryingMappedFixedValue boundary
 condition. A configurable endpoint slot accepts any compatible API, with a live test
 editor for defining the response format.
 
@@ -76,7 +76,7 @@ editor for defining the response format.
 | Interface        | Qt5 and VTK 9                           |
 | Geometry         | OpenCASCADE (OCCT 7.6)                  |
 | Solver backend   | OpenFOAM 2412                           |
-| Custom schemes   | C++ wmake library (`libtenoScheme.so`)  |
+| Custom schemes   | C++ wmake library (libtenoScheme.so)  |
 | Visualisation    | VTK 9                                   |
 | Build system     | CMake 3.16 or later, and wmake          |
 
@@ -90,7 +90,7 @@ editor for defining the response format.
 - CMake 3.16 or later
 - GCC 11 or later with C++17 support
 
-On Windows, install WSL2 by running `wsl --install` in an administrator terminal,
+On Windows, install WSL2 by running wsl --install in an administrator terminal,
 then carry out the build steps below inside the WSL shell.
 
 ## Building CakeCFD
@@ -105,21 +105,21 @@ cd cake-studio
 
 The script checks for the required tools, sources the OpenFOAM environment if it
 is not already active, and reports which schemes the resulting library
-registers. Full compiler output goes to `build/build.log`.
+registers. Full compiler output goes to build/build.log.
 
 Options:
 
 | Option | Effect |
 |-------------------|-----------------------------------------------|
-| `--clean` | Remove build artefacts first |
-| `--debug` | Build with debug symbols |
-| `--app-only` | Skip the TENO library (no OpenFOAM needed) |
-| `--teno-only` | Skip the application |
-| `--verbose`, `-v` | Show full compiler output |
-| `--jobs N`, `-j N`| Parallel jobs, defaults to all cores |
+| --clean | Remove build artefacts first |
+| --debug | Build with debug symbols |
+| --app-only | Skip the TENO library (no OpenFOAM needed) |
+| --teno-only | Skip the application |
+| --verbose, -v | Show full compiler output |
+| --jobs N, -j N| Parallel jobs, defaults to all cores |
 
 To build by hand instead, the application uses CMake in the usual way, and the
-scheme library is built with `wmake libso` from `src/solver/schemes/TENO` with
+scheme library is built with wmake libso from src/solver/schemes/TENO with
 an OpenFOAM environment active.
 
 ## Running CakeCFD

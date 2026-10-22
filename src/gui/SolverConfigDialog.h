@@ -101,6 +101,7 @@ private:
     QComboBox*      m_divScheme     = nullptr;
     QComboBox*      m_simType       = nullptr;  // RANS / LES
     QComboBox*      m_sgsModel      = nullptr;  // SGS model (LES only)
+    QComboBox*      m_rasModel      = nullptr;  // RAS model (RANS only)
 
     // Solver settings
     QSpinBox*       m_nCorrectors   = nullptr;

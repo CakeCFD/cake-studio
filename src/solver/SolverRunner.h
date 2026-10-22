@@ -43,6 +43,9 @@ public:
              const QStringList& args = {}, bool useGpu = false, double vramFraction = 0.80);
     void stop();
     bool isRunning() const;
+    // State of the most recently finished run, valid inside solverFinished handlers
+    bool lastRunStopped() const { return m_lastRunStopped; }
+    bool lastRunCrashed() const { return m_lastRunCrashed; }
 
 signals:
     void outputLine(const QString& line);
@@ -61,4 +64,7 @@ private:
     QProcess*    m_process      = nullptr;
     int          m_currentIter  = 0;
     QSet<QString> m_emittedThisStep;  // fields already plotted for current timestep
+    bool         m_stopRequested  = false;
+    bool         m_lastRunStopped = false;
+    bool         m_lastRunCrashed = false;
 };

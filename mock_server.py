@@ -4,7 +4,10 @@ Mock turbulence database server - mimics JHTDB SOAP + a custom REST API.
 
 Endpoints
 ---------
-SOAP (POST /)          - JHTDB-style: set endpoint to http://localhost:8765/
+SOAP (POST /turbulence.asmx) - JHTDB-style. DatasetClient only speaks SOAP to
+                         endpoints ending in .asmx, so use
+                         http://localhost:8765/turbulence.asmx
+                         (POST / is also accepted for curl tests)
   GetVelocity          → <x><y><z> per point
   GetPressure          → <float> per point
   GetVorticity         → <x><y><z> per point
@@ -21,14 +24,32 @@ Usage
     python3 mock_server.py [port]          # default port 8765
 
 In CakeStudio DatasetPanel:
-  Endpoint:   http://localhost:8765/
+  SOAP mode:  Endpoint http://localhost:8765/turbulence.asmx
+  REST mode:  Endpoint http://localhost:8765   (uses /datasets and /query)
   Token:      any-string
+
+SOAP requests follow the JHTDB WSDL: <spatialInterpolation> and
+<temporalInterpolation> carry enum names (Lag4, PCHIP, ...). Unknown names
+get a SOAP fault, like the real service.
 """
 
-import math, random, re, json
+import html, math, random, re, json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 PORT = 8765
+SOAP_PATH = '/turbulence.asmx'
+JHTDB_NS  = 'http://turbulence.pha.jhu.edu/'
+
+# JHTDB SpatialInterpolation / TemporalInterpolation enum members
+SPATIAL_INTERP = {
+    'None', 'Lag4', 'Lag6', 'Lag8',
+    'None_Fd4', 'None_Fd6', 'None_Fd8', 'Fd4Lag4',
+    'M1Q4', 'M1Q6', 'M1Q8', 'M1Q10', 'M1Q12', 'M1Q14',
+    'M2Q4', 'M2Q6', 'M2Q8', 'M2Q10', 'M2Q12', 'M2Q14',
+    'M3Q4', 'M3Q6', 'M3Q8', 'M3Q10', 'M3Q12', 'M3Q14',
+    'M4Q4', 'M4Q6', 'M4Q8', 'M4Q10', 'M4Q12', 'M4Q14',
+}
+TEMPORAL_INTERP = {'None', 'PCHIP'}
 
 # synthetic field generators
 
@@ -82,26 +103,39 @@ def _parse_points(body: str):
     pts = []
     for m in re.finditer(r'<(?:\w+:)?Point3[^>]*>(.*?)</(?:\w+:)?Point3>', body, re.DOTALL):
         chunk = m.group(1)
-        def tag(n): return re.search(rf'<{n}>(.*?)</{n}>', chunk)
+        def tag(n): return re.search(rf'<(?:\w+:)?{n}>(.*?)</(?:\w+:)?{n}>', chunk)
         mx = tag('x'); my = tag('y'); mz = tag('z')
         if mx and my and mz:
             pts.append((float(mx.group(1)), float(my.group(1)), float(mz.group(1))))
     return pts
 
+def _parse_elem(body: str, name: str):
+    m = re.search(rf'<(?:\w+:)?{name}>(.*?)</(?:\w+:)?{name}>', body, re.DOTALL)
+    return m.group(1).strip() if m else None
+
 def _parse_time(body: str):
-    m = re.search(r'<time>(.*?)</time>', body)
-    return float(m.group(1)) if m else 0.0
+    v = _parse_elem(body, 'time')
+    return float(v) if v else 0.0
+
+def _soap_fault(msg: str) -> bytes:
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
+        '<soap:Body><soap:Fault><faultcode>soap:Client</faultcode>'
+        f'<faultstring>{html.escape(msg)}</faultstring>'
+        '</soap:Fault></soap:Body></soap:Envelope>'
+    ).encode()
 
 def _soap_wrap(method: str, inner: str) -> bytes:
     # Match real JHTDB response envelope exactly:
-    # <{Method}Response xmlns="http://turbulence.phy.jhu.edu/">
+    # <{Method}Response xmlns="http://turbulence.pha.jhu.edu/">
     #   <{Method}Result> ... structs with bare element names ... </{Method}Result>
     # </...Response>
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
         '<soap:Body>'
-        f'<{method}Response xmlns="http://turbulence.phy.jhu.edu/">'
+        f'<{method}Response xmlns="{JHTDB_NS}">'
         f'<{method}Result>'
         + inner +
         f'</{method}Result>'
@@ -110,7 +144,23 @@ def _soap_wrap(method: str, inner: str) -> bytes:
         '</soap:Envelope>'
     ).encode()
 
-def _handle_soap(body: str, method: str) -> bytes:
+def _handle_soap(body: str, method: str):
+    """Returns (http_status, xml_bytes)."""
+    # Interpolation elements are optional here (curl tests omit them) but,
+    # when present, must use the WSDL element names and enum values
+    for legacy in ('spatialInterp', 'temporalInterp'):
+        if _parse_elem(body, legacy) is not None:
+            return 500, _soap_fault(f'Unknown element <{legacy}>: use '
+                                    f'<{legacy}olation> with an enum name')
+    si = _parse_elem(body, 'spatialInterpolation')
+    ti = _parse_elem(body, 'temporalInterpolation')
+    if si is not None and si not in SPATIAL_INTERP:
+        return 500, _soap_fault(f"Invalid SpatialInterpolation value '{si}'")
+    if ti is not None and ti not in TEMPORAL_INTERP:
+        return 500, _soap_fault(f"Invalid TemporalInterpolation value '{ti}'")
+    return 200, _handle_soap_points(body, method)
+
+def _handle_soap_points(body: str, method: str) -> bytes:
     pts = _parse_points(body)
     t   = _parse_time(body)
     if not pts:
@@ -205,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/datasets':
             self._send(200, 'application/json', json.dumps(DATASETS).encode())
-        elif self.path in ('/', '/health'):
+        elif self.path in ('/', '/health', SOAP_PATH):
             self._send(200, 'text/plain', b'CakeFOAM mock turbulence server - OK')
         else:
             self._send(404, 'text/plain', b'Not found')
@@ -240,14 +290,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, 'application/json', json.dumps({'results': results}).encode())
             return
 
-        # SOAP dispatch - extract method from SOAPAction header or body
+        # SOAP dispatch (SOAP_PATH, or any other path for curl tests) -
+        # method from the SOAPAction header ("<namespace>GetVelocity") or body
         soap_action = self.headers.get('SOAPAction', '').strip('"').split('/')[-1]
         if not soap_action:
-            m = re.search(r'<(?:\w+:)?(\w+) xmlns="http://turbulence', body)
+            m = re.search(r'<(?:\w+:)?(Get\w+)[\s>]', body)
             soap_action = m.group(1) if m else 'GetVelocity'
 
-        resp = _handle_soap(body, soap_action)
-        self._send(200, 'text/xml; charset=utf-8', resp)
+        status, resp = _handle_soap(body, soap_action)
+        self._send(status, 'text/xml; charset=utf-8', resp)
 
 
 if __name__ == '__main__':
@@ -255,9 +306,9 @@ if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else PORT
     server = HTTPServer(('0.0.0.0', port), Handler)
     print(f"Mock turbulence server running on http://localhost:{port}/")
-    print(f"  SOAP endpoint  →  http://localhost:{port}/")
+    print(f"  SOAP endpoint  →  http://localhost:{port}{SOAP_PATH}")
     print(f"  Dataset list   →  http://localhost:{port}/datasets")
-    print(f"  Custom query   →  http://localhost:{port}/query  (POST JSON)")
+    print(f"  Custom query   →  http://localhost:{port}/query  (POST JSON; endpoint http://localhost:{port})")
     print("Press Ctrl-C to stop.\n")
     try:
         server.serve_forever()

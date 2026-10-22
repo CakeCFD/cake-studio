@@ -104,6 +104,162 @@ void BCEditorDialog::discoverFields()
         loadField(name);
 }
 
+// Minimal OpenFOAM dictionary scanner (declared in BCEditorDialog.h, also
+// used by MRFDialog). Only tracks entry extents at one nesting level so edits
+// can be spliced into the original text; comments, quoted strings and nested
+// dicts/lists are skipped, never interpreted.
+namespace OFDict {
+
+int skipWsComments(const QString& t, int i, int end)
+{
+    while (i < end) {
+        const QChar c = t[i];
+        if (c.isSpace()) { ++i; continue; }
+        if (c == '/' && i + 1 < end && t[i + 1] == '/') {
+            while (i < end && t[i] != '\n') ++i;
+            continue;
+        }
+        if (c == '/' && i + 1 < end && t[i + 1] == '*') {
+            int e = t.indexOf("*/", i + 2);
+            i = (e < 0 || e + 2 > end) ? end : e + 2;
+            continue;
+        }
+        break;
+    }
+    return i;
+}
+
+int skipString(const QString& t, int i, int end)
+{
+    ++i;
+    while (i < end) {
+        if (t[i] == '\\') { i += 2; continue; }
+        if (t[i] == '"')  return i + 1;
+        ++i;
+    }
+    return end;
+}
+
+// Index of the '}' matching the '{' at open, or -1
+int matchBrace(const QString& t, int open, int end)
+{
+    int depth = 0, i = open;
+    while (i < end) {
+        const QChar c = t[i];
+        if (c == '"') { i = skipString(t, i, end); continue; }
+        if (c == '/' && i + 1 < end && (t[i + 1] == '/' || t[i + 1] == '*')) {
+            i = skipWsComments(t, i, end);
+            continue;
+        }
+        if (c == '{') ++depth;
+        else if (c == '}' && --depth == 0) return i;
+        ++i;
+    }
+    return -1;
+}
+
+// Entries directly inside [begin, end): keyword { ... } or keyword value;
+// Directives (#include "x", #codeStream {...}) are returned with their '#' key.
+QList<DictEntry> topLevelEntries(const QString& t, int begin, int end)
+{
+    QList<DictEntry> out;
+    int i = begin;
+    while (true) {
+        i = skipWsComments(t, i, end);
+        if (i >= end) break;
+
+        DictEntry e;
+        e.start = i;
+        if (t[i] == '#') {
+            int k = i + 1;
+            while (k < end && (t[k].isLetterOrNumber() || t[k] == '_')) ++k;
+            e.key = t.mid(i, k - i);
+            e.keyEnd = k;
+            int nl = t.indexOf('\n', k);
+            if (nl < 0 || nl > end) nl = end;
+            int br = t.indexOf('{', k);
+            if (br >= 0 && br < nl) {
+                int c = matchBrace(t, br, end);
+                i = c < 0 ? end : c + 1;
+            } else {
+                i = nl;
+            }
+            e.end = i;
+            out << e;
+            continue;
+        }
+
+        if (t[i] == '"') {
+            i = skipString(t, i, end);
+            e.key = t.mid(e.start + 1, i - e.start - 2);
+        } else {
+            while (i < end && !t[i].isSpace() && t[i] != '{' && t[i] != '}'
+                   && t[i] != ';' && t[i] != '"')
+                ++i;
+            e.key = t.mid(e.start, i - e.start);
+            if (e.key.isEmpty()) { ++i; continue; }   // stray ';' or '}'
+        }
+        e.keyEnd = i;
+
+        int j = skipWsComments(t, i, end);
+        if (j < end && t[j] == '{') {
+            e.braceOpen  = j;
+            e.braceClose = matchBrace(t, j, end);
+            e.end = e.braceClose < 0 ? end : e.braceClose + 1;
+            i = e.end;
+            out << e;
+            continue;
+        }
+
+        // Plain entry: runs to the ';' outside any nested ( ) or { }
+        int depth = 0;
+        while (j < end) {
+            const QChar c = t[j];
+            if (c == '"') { j = skipString(t, j, end); continue; }
+            if (c == '/' && j + 1 < end && (t[j + 1] == '/' || t[j + 1] == '*')) {
+                j = skipWsComments(t, j, end);
+                continue;
+            }
+            if (c == '(' || c == '{') ++depth;
+            else if (c == ')' || c == '}') --depth;
+            else if (c == ';' && depth <= 0) break;
+            ++j;
+        }
+        e.end = j < end ? j + 1 : end;
+        i = e.end;
+        out << e;
+    }
+    return out;
+}
+
+const DictEntry* findEntry(const QList<DictEntry>& entries, const QString& key)
+{
+    for (const DictEntry& e : entries)
+        if (e.key == key) return &e;
+    return nullptr;
+}
+
+// Text between the keyword and the terminating ';', trimmed
+QString entryValue(const QString& t, const DictEntry& e)
+{
+    int stop = e.end;
+    if (stop > e.keyEnd && t[stop - 1] == ';') --stop;
+    return t.mid(e.keyEnd, stop - e.keyEnd).trimmed();
+}
+
+// Leading whitespace of the line containing pos
+QString lineIndent(const QString& t, int pos)
+{
+    int ls = pos > 0 ? t.lastIndexOf('\n', pos - 1) + 1 : 0;
+    int k = ls;
+    while (k < t.size() && (t[k] == ' ' || t[k] == '\t')) ++k;
+    return t.mid(ls, k - ls);
+}
+
+} // namespace OFDict
+
+using namespace OFDict;
+
 static bool looksLikeVectorField(const QString& text)
 {
     QRegularExpression dimRe(R"(dimensions\s*\[([^\]]+)\])");
@@ -137,53 +293,33 @@ QList<BCPatch> BCEditorDialog::parsePatches(const QString& text)
 {
     QList<BCPatch> patches;
 
-    int bfIdx = text.indexOf("boundaryField");
-    if (bfIdx < 0) return patches;
-    int braceOpen = text.indexOf('{', bfIdx);
-    if (braceOpen < 0) return patches;
+    const QList<DictEntry> top = topLevelEntries(text, 0, text.size());
+    const DictEntry* bf = findEntry(top, "boundaryField");
+    if (!bf || bf->braceOpen < 0 || bf->braceClose < 0) return patches;
 
-    int depth = 0, i = braceOpen, sectionEnd = text.size() - 1;
-    while (i < text.size()) {
-        if (text[i] == '{')      ++depth;
-        else if (text[i] == '}') { if (!--depth) { sectionEnd = i; break; } }
-        ++i;
-    }
+    // Only depth-1 sub-dicts are patches (names may be quoted regexes such
+    // as ".*" or "(top|bottom)"); nested dicts inside a patch are skipped
+    for (const DictEntry& e : topLevelEntries(text, bf->braceOpen + 1, bf->braceClose)) {
+        if (e.braceOpen < 0 || e.braceClose < 0 || e.key.isEmpty()) continue;
 
-    QString section = text.mid(braceOpen + 1, sectionEnd - braceOpen - 1);
-
-    // Matches both multi-line ("name\n{") and inline ("name {") OF patch format
-    static QRegularExpression patchRe(
-        R"((?:^|[\n\r])[ \t]*([\w/.-]+)[ \t]*(?:[\r\n]+[ \t]*)?\{)",
-        QRegularExpression::MultilineOption);
-    auto it = patchRe.globalMatch(section);
-    while (it.hasNext()) {
-        auto match = it.next();
-        QString patchName = match.captured(1).trimmed();
-        if (patchName.isEmpty()) continue;
-
-        int patchBrace = match.capturedEnd() - 1;
-        int d = 0, j = patchBrace, patchEnd = patchBrace;
-        while (j < section.size()) {
-            if (section[j] == '{')      ++d;
-            else if (section[j] == '}') { if (!--d) { patchEnd = j; break; } }
-            ++j;
-        }
-        QString body = section.mid(patchBrace + 1, patchEnd - patchBrace - 1);
+        const QList<DictEntry> body = topLevelEntries(text, e.braceOpen + 1, e.braceClose);
 
         BCPatch patch;
-        patch.name = patchName;
+        patch.name       = e.key;
+        patch.braceOpen  = e.braceOpen;
+        patch.braceClose = e.braceClose;
 
-        QRegularExpression typeRe(R"(\btype\s+(\w+)\s*;)");
-        auto tm = typeRe.match(body);
-        patch.type = tm.hasMatch() ? tm.captured(1) : "zeroGradient";
+        const DictEntry* te = findEntry(body, "type");
+        patch.type = te ? entryValue(text, *te) : QString("zeroGradient");
 
-        QRegularExpression uniRe(R"(\bvalue\s+uniform\s+([^;]+?)\s*;)");
-        auto vm = uniRe.match(body);
-        if (vm.hasMatch()) {
-            patch.value = vm.captured(1).trimmed();
-        } else {
-            QRegularExpression anyValRe(R"(\bvalue\s+(nonuniform|List|#codeStream))");
-            patch.nonUniform = anyValRe.match(body).hasMatch();
+        if (const DictEntry* ve = findEntry(body, "value")) {
+            static const QRegularExpression uniRe(R"(^uniform\s+(.+)$)",
+                QRegularExpression::DotMatchesEverythingOption);
+            auto vm = uniRe.match(entryValue(text, *ve));
+            if (vm.hasMatch())
+                patch.value = vm.captured(1).simplified();
+            else
+                patch.nonUniform = true;   // nonuniform, List, #codeStream, $macro
         }
 
         patches.append(patch);
@@ -268,45 +404,80 @@ void BCEditorDialog::buildTab(const QString& fieldName, FieldData& fd)
                 });
     }
 
-    fd.table = table;
+    fd.table   = table;
+    fd.patches = patches;
     lay->addWidget(table, 1);
     m_tabs->addTab(w, fieldName);
 }
 
 bool BCEditorDialog::writeField(FieldData& fd, const QList<BCPatch>& patches, QString& errOut)
 {
-    int bfIdx = fd.originalText.indexOf("boundaryField");
-    if (bfIdx < 0) { errOut = "boundaryField section not found"; return false; }
-    int braceOpen = fd.originalText.indexOf('{', bfIdx);
-    if (braceOpen < 0) { errOut = "Opening brace not found"; return false; }
-
-    int depth = 0, i = braceOpen, sectionEnd = -1;
-    while (i < fd.originalText.size()) {
-        if (fd.originalText[i] == '{')      ++depth;
-        else if (fd.originalText[i] == '}') { if (!--depth) { sectionEnd = i; break; } }
-        ++i;
+    // Splice edits into the original text: untouched patches stay
+    // byte-identical, and in edited ones only the type / value entries
+    // change (inletValue, p0, gradient, Function1 dicts, #include survive).
+    const QList<BCPatch> orig = parsePatches(fd.originalText);
+    if (orig.size() != patches.size()) {
+        errOut = QString("File changed since it was loaded: expected %1 patches, found %2")
+                     .arg(patches.size()).arg(orig.size());
+        return false;
     }
-    if (sectionEnd < 0) { errOut = "Unmatched braces in boundaryField"; return false; }
 
-    QString newBF = "boundaryField\n{\n";
-    for (const BCPatch& p : patches) {
-        newBF += QString("    %1\n    {\n").arg(p.name);
-        newBF += QString("        type            %1;\n").arg(p.type);
-        if (!p.nonUniform && !p.value.isEmpty() && !NO_VALUE_TYPES.contains(p.type))
-            newBF += QString("        value           uniform %1;\n").arg(p.value);
-        newBF += "    }\n";
+    QString result = fd.originalText;
+    int changed = 0;
+    // Back to front so earlier offsets stay valid
+    for (int k = orig.size() - 1; k >= 0; --k) {
+        const BCPatch& o = orig[k];
+        const BCPatch& p = patches[k];
+        const bool typeChanged  = p.type != o.type;
+        const bool wantsValue   = !p.nonUniform && !p.value.isEmpty()
+                                  && !NO_VALUE_TYPES.contains(p.type);
+        const bool valueChanged = wantsValue && p.value.simplified() != o.value;
+        if (!typeChanged && !valueChanged) continue;
+        ++changed;
+
+        // The patch's '{' does not move while editing its own body, so the
+        // body is re-scanned after each splice
+        auto bodyEntries = [&]() {
+            int close = matchBrace(result, o.braceOpen, result.size());
+            return topLevelEntries(result, o.braceOpen + 1,
+                                   close < 0 ? result.size() : close);
+        };
+
+        if (typeChanged) {
+            const QList<DictEntry> body = bodyEntries();
+            if (const DictEntry* te = findEntry(body, "type")) {
+                result.replace(te->start, te->end - te->start,
+                               QString("type            %1;").arg(p.type));
+            } else {
+                QString ind = lineIndent(result, o.braceOpen) + "    ";
+                result.insert(o.braceOpen + 1,
+                              QString("\n%1type            %2;").arg(ind, p.type));
+            }
+        }
+        if (valueChanged) {
+            const QList<DictEntry> body = bodyEntries();
+            const DictEntry* te = findEntry(body, "type");
+            if (const DictEntry* ve = findEntry(body, "value")) {
+                result.replace(ve->start, ve->end - ve->start,
+                               QString("value           uniform %1;").arg(p.value));
+            } else if (te) {
+                result.insert(te->end, QString("\n%1value           uniform %2;")
+                                           .arg(lineIndent(result, te->start), p.value));
+            } else {
+                QString ind = lineIndent(result, o.braceOpen) + "    ";
+                result.insert(o.braceOpen + 1,
+                              QString("\n%1value           uniform %2;").arg(ind, p.value));
+            }
+        }
     }
-    newBF += "}";
 
-    QString result = fd.originalText.left(bfIdx)
-                   + newBF
-                   + fd.originalText.mid(sectionEnd + 1);
+    if (changed == 0) return true;   // nothing edited: leave the file alone
 
     // Validate: re-parse and confirm patch count matches
     QList<BCPatch> check = parsePatches(result);
-    if (check.size() != patches.size()) {
+    if (check.size() != orig.size()) {
         errOut = QString("Post-write validation failed: expected %1 patches, got %2")
-                     .arg(patches.size()).arg(check.size());
+                     .arg(orig.size()).arg(check.size());
         return false;
     }
 

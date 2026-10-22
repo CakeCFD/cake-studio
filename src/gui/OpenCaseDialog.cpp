@@ -27,6 +27,7 @@
 #include <QGroupBox>
 #include <QFormLayout>
 #include <QDialogButtonBox>
+#include <algorithm>
 
 OpenCaseDialog::OpenCaseDialog(QWidget* parent)
     : QDialog(parent)
@@ -135,7 +136,9 @@ void OpenCaseDialog::scanCase(const QString& dir)
         if (isNum && entry != "0") timeDirs << entry;
     }
     if (!timeDirs.isEmpty()) {
-        timeDirs.sort();
+        // Numeric order: as strings "1000" < "200"
+        std::sort(timeDirs.begin(), timeDirs.end(),
+                  [](const QString& a, const QString& b) { return a.toDouble() < b.toDouble(); });
         m_resultsInfo->setText(ok(QString("%1 time step(s): latest: %2")
                                   .arg(timeDirs.size()).arg(timeDirs.last())));
         valid = true;

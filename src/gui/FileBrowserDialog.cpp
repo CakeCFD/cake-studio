@@ -416,7 +416,16 @@ void FileBrowserDialog::onAccept()
         if (name.isEmpty()) return;
         if (!m_extensions.isEmpty() && !name.contains('.'))
             name += "." + m_extensions.first();
-        m_selected = m_currentDir + "/" + name;
+        const QString target = m_currentDir + "/" + name;
+        QFileInfo fi(target);
+        if (fi.exists()) {
+            if (fi.isDir()) { navigateTo(target); return; }
+            if (QMessageBox::question(this, "Confirm Overwrite",
+                    QString("\"%1\" already exists.\nDo you want to replace it?").arg(name),
+                    QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+                return;
+        }
+        m_selected = target;
         accept();
         return;
     }
@@ -544,6 +553,10 @@ void FileBrowserDialog::keyPressEvent(QKeyEvent* e)
         return;
     }
     if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) {
+        // QLineEdit emits returnPressed (already wired to onAccept) and then
+        // lets the key propagate here; activating the highlighted list item
+        // too would replace the typed name with that file's
+        if (m_nameEdit && m_nameEdit->hasFocus()) return;
         auto* sel = m_fileList->currentItem();
         if (sel) onItemActivated(sel, 0);
         return;

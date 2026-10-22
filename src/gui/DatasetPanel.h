@@ -79,9 +79,9 @@ private:
                            const QVector<double>& points,
                            const QList<QVector<double>>& valuesByTime,
                            const QVector<double>& times,
-                           int components);
+                           int components, const QString& fieldName);
     bool patchInletBC(const QString& caseDir, const QString& patch,
-                      const QString& field);
+                      const QString& field, int components);
     bool writeRansBcs(const QString& caseDir, const CFD::TurbStats& stats);
     QStringList getPatchNames(const QString& caseDir);
     QVector<double> readPatchFaceCenters(const QString& caseDir,

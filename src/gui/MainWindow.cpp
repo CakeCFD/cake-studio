@@ -57,6 +57,11 @@
 #include <QKeySequence>
 #include <QInputDialog>
 #include <QShortcut>
+#include <QLineEdit>
+#include <QAbstractSpinBox>
+#include <QComboBox>
+#include <QTextEdit>
+#include <QPlainTextEdit>
 
 // helpers
 
@@ -232,6 +237,8 @@ void MainWindow::setupDockPanels() {
             if (m_console)    m_console->setCaseDir(caseDir);
             if (m_caseTree)   m_caseTree->setCaseDir(caseDir);
             if (m_meshPanel)  m_meshPanel->setProjectDir(caseDir);
+            if (m_sysPanel)     m_sysPanel->setCaseDir(caseDir);
+            if (m_datasetPanel) m_datasetPanel->setCaseDir(caseDir);
         }
         if (m_viewport && !stlPath.isEmpty() && QFile::exists(stlPath))
             m_viewport->loadSTL(stlPath);
@@ -474,6 +481,8 @@ void MainWindow::setupMenuBar() {
         if (!m_console) return;
         QString cd = m_console->caseDir();
         if (cd.isEmpty()) { showStatusWarning("No case directory set."); return; }
+        // Never delete time dirs out from under a live solver
+        if (m_console->runner()->isRunning()) { showStatusWarning("A solver is already running: stop it first."); return; }
         for (const QString& e : QDir(cd).entryList(QDir::Dirs|QDir::NoDotAndDotDot)) {
             bool ok; int n = e.toInt(&ok);
             if (ok && n > 0) QDir(QDir(cd).filePath(e)).removeRecursively();
@@ -553,10 +562,19 @@ void MainWindow::setupMenuBar() {
     focusAct->setToolTip("Hide all panels: press F again to restore");
     connect(focusAct, &QAction::triggered, this, &MainWindow::toggleFocusMode);
 
-    // QShortcut lives on the window directly: stays active even when menubar is hidden
+    // QShortcut lives on the window directly: stays active even when menubar is hidden.
+    // Window context only (not dialogs), and never while a text/choice widget has focus.
     auto* focusShortcut = new QShortcut(Qt::Key_F, this);
-    focusShortcut->setContext(Qt::ApplicationShortcut);
-    connect(focusShortcut, &QShortcut::activated, this, &MainWindow::toggleFocusMode);
+    focusShortcut->setContext(Qt::WindowShortcut);
+    connect(focusShortcut, &QShortcut::activated, this, [this]{
+        QWidget* fw = QApplication::focusWidget();
+        if (qobject_cast<QLineEdit*>(fw) || qobject_cast<QAbstractSpinBox*>(fw)
+            || qobject_cast<QComboBox*>(fw) || qobject_cast<QTextEdit*>(fw))
+            return;
+        if (auto* pte = qobject_cast<QPlainTextEdit*>(fw); pte && !pte->isReadOnly())
+            return;
+        toggleFocusMode();
+    });
 
     // Help
     auto* helpMenu = menuBar()->addMenu("Help");
@@ -734,6 +752,19 @@ void MainWindow::restoreWorkspace() {
     }
     if (s.contains("windowGeometry")) restoreGeometry(s.value("windowGeometry").toByteArray());
     if (s.contains("windowState"))    restoreState(s.value("windowState").toByteArray(), kLayoutVersion);
+    // The saved state may have been captured in the other mode
+    syncDocksToMode();
+}
+
+void MainWindow::syncDocksToMode()
+{
+    const bool studio = (m_mode == AppMode::Studio);
+    if (studio) {
+        if (m_meshDock) m_meshDock->hide();
+    } else {
+        for (QDockWidget* d : {m_caseDock, m_propDock, m_dataDock, m_consoleDock})
+            if (d) d->hide();
+    }
 }
 
 void MainWindow::onDockTopLevelChanged(QDockWidget* dock, bool floating) {
@@ -991,6 +1022,8 @@ void MainWindow::toggleFocusMode()
         menuBar()->show();
         statusBar()->show();
         restoreState(m_preFocusState);
+        // The mode may have changed (Ctrl+1/Ctrl+2) while focus mode was on
+        syncDocksToMode();
     }
 }
 

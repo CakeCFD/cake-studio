@@ -115,9 +115,10 @@ void MeshQualityDialog::onRun()
             this, [this](int code, QProcess::ExitStatus) { onFinished(code); });
 
     const QString ofBashrc = "/usr/lib/openfoam/openfoam2412/etc/bashrc";
-    QString cmd = QString("source %1 2>/dev/null && cd '%2' && checkMesh -allGeometry -allTopology 2>&1")
-                    .arg(ofBashrc, m_caseDir);
-    m_proc->start("bash", {"-c", cmd});
+    // Paths go in as positional args ($1, $2), never spliced into the script,
+    // so case dirs containing quotes or spaces are safe
+    const QString cmd = R"(source "$1" 2>/dev/null; cd "$2" && checkMesh -allGeometry -allTopology 2>&1)";
+    m_proc->start("bash", {"-c", cmd, "bash", ofBashrc, m_caseDir});
 }
 
 void MeshQualityDialog::onReadOutput()
@@ -206,49 +207,72 @@ void MeshQualityDialog::parseAndDisplay(const QString& out)
     if (!intFaces.isEmpty())
         addRow({"Internal faces", intFaces, "-", Metric::OK});
 
-    // Geometry
-    double maxNO = dbl(R"(Max non-orthogonality\s*=\s*([\d.]+))");
+    // Geometry. Floats may carry exponents (skewness 9.8e-15); patterns
+    // accept both v2412 wording ("Mesh non-orthogonality Max: X average: Y",
+    // "Min volume = X. Max volume = Y.") and the older "= value" wording.
+    const QString F = R"(([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?))";
+    auto dblAny = [&](std::initializer_list<QString> pats) {
+        for (const QString& p : pats) {
+            double v = dbl(QString(p).replace("%F", F));
+            if (v >= 0) return v;
+        }
+        return -1.0;
+    };
+
+    double maxNO = dblAny({R"(non-orthogonality\s+Max:\s*%F)",
+                           R"(Max non-orthogonality\s*[=:]\s*%F)"});
     if (maxNO >= 0) {
         Metric::Status s = maxNO < 70 ? Metric::OK : maxNO < 85 ? Metric::WARN : Metric::ERROR;
         addRow({"Max non-orthogonality", QString::number(maxNO,'f',2)+"°",
                 "< 70° ideal, < 85° limit", s});
     }
 
-    double avgNO = dbl(R"(Average non-orthogonality\s*=\s*([\d.]+))");
+    double avgNO = dblAny({R"(non-orthogonality\s+Max:\s*\S+\s+average:\s*%F)",
+                           R"(Average non-orthogonality\s*[=:]\s*%F)"});
     if (avgNO >= 0) {
         addRow({"Avg non-orthogonality", QString::number(avgNO,'f',2)+"°",
                 "< 40°", avgNO < 40 ? Metric::OK : Metric::WARN});
     }
 
-    double skew = dbl(R"(max skewness\s*=\s*([\d.]+))");
-    if (skew < 0) skew = dbl(R"(Max skewness\s*=\s*([\d.]+))");
+    double skew = dblAny({R"(max skewness\s*[=:]\s*%F)"});
     if (skew >= 0) {
         addRow({"Max skewness", QString::number(skew,'f',3),
                 "< 4 (hex), < 20 (tet)", skew < 4 ? Metric::OK : skew < 20 ? Metric::WARN : Metric::ERROR});
     }
 
-    double ar = dbl(R"(max aspect ratio\s*=\s*([\d.]+))");
+    double ar = dblAny({R"(max aspect ratio\s*[=:]\s*%F)"});
     if (ar >= 0) {
         addRow({"Max aspect ratio", QString::number(ar,'f',1),
                 "< 100 ideal", ar < 100 ? Metric::OK : ar < 1000 ? Metric::WARN : Metric::ERROR});
     }
 
-    double minVol = dbl(R"(minimum volume\s*=\s*([\d.eE+\-]+))");
-    if (minVol >= 0) {
+    // Min volume can legitimately be negative (inverted cells): match the
+    // sign explicitly instead of treating -1 as "not found"
+    double minVol = -1.0;
+    bool   haveMinVol = false;
+    for (const QString& p : {QString(R"(\bMin volume\s*=\s*%F)"),
+                             QString(R"(minimum volume\s*[=:]\s*%F)")}) {
+        QRegularExpression re(QString(p).replace("%F", F),
+                              QRegularExpression::CaseInsensitiveOption);
+        auto m = re.match(out);
+        if (m.hasMatch()) { minVol = m.captured(1).toDouble(); haveMinVol = true; break; }
+    }
+    if (haveMinVol) {
         addRow({"Min cell volume", QString::number(minVol,'e',3)+" m³",
                 "> 0", minVol > 0 ? Metric::OK : Metric::ERROR});
     }
 
-    double maxVol = dbl(R"(maximum volume\s*=\s*([\d.eE+\-]+))");
+    double maxVol = dblAny({R"(\bMax volume\s*=\s*%F)", R"(maximum volume\s*[=:]\s*%F)"});
     if (maxVol >= 0)
         addRow({"Max cell volume", QString::number(maxVol,'e',3)+" m³", "-", Metric::OK});
 
-    double totalVol = dbl(R"(total volume\s*=\s*([\d.eE+\-]+))");
+    double totalVol = dblAny({R"(total volume\s*[=:]\s*%F)"});
     if (totalVol >= 0)
         addRow({"Total mesh volume", QString::number(totalVol,'e',4)+" m³", "-", Metric::OK});
 
     // Failed checks
     double negVol = dbl(R"((\d+)\s+cells with negative volume)");
+    if (negVol < 0) negVol = dbl(R"(Number of negative volume cells\s*:\s*(\d+))");
     if (negVol > 0)
         addRow({"Negative volume cells", QString::number((int)negVol),
                 "0", Metric::ERROR});

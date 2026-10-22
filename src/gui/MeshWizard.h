@@ -51,7 +51,8 @@ private:
     void buildPhysicsTab(QTabWidget*);
     void buildBottomBar();
     void log(const QString& msg);
-    void runCommand(const QString& cmd);
+    bool runCommand(const QString& cmd); // runs cmd via bash -c; true on exit code 0
+    static QString shellPrefix(const QString& caseDir); // source OF bashrc + cd caseDir
     void setRunning(bool);
 
     // Geometry tab

@@ -22,10 +22,31 @@
 #include <QFrame>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
+#include <limits>
 #include <QLabel>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QValidator>
+#include <QRegularExpression>
 #include "themes/ThemeEngine.h"
+
+// Double spinbox that shows values in shortest 'g' form (0.0005, 1e-05, 200)
+// instead of a fixed number of decimals, so small transient times survive.
+class GDoubleSpinBox : public QDoubleSpinBox {
+public:
+    using QDoubleSpinBox::QDoubleSpinBox;
+    QString textFromValue(double v) const override { return QString::number(v, 'g', 10); }
+    double  valueFromText(const QString& t) const override { return t.trimmed().toDouble(); }
+    QValidator::State validate(QString& t, int&) const override {
+        const QString s = t.trimmed();
+        if (s.isEmpty()) return QValidator::Intermediate;
+        bool ok; const double v = s.toDouble(&ok);
+        if (ok) return (v >= minimum() && v <= maximum()) ? QValidator::Acceptable
+                                                          : QValidator::Intermediate;
+        static const QRegularExpression partial(R"(^\+?\d*\.?\d*(?:[eE][-+]?\d*)?$)");
+        return partial.match(s).hasMatch() ? QValidator::Intermediate : QValidator::Invalid;
+    }
+};
 
 class SystemConfigPanel : public QWidget {
     Q_OBJECT
@@ -44,6 +65,9 @@ public slots:
 private:
     void detect();
     void writeDecomposeParDict();
+    void loadControlDict();          // read endTime/writeInterval into the spinboxes
+    void writeControlDictIfEdited(); // write only values the user changed since the last load
+    void resyncXyz();                // make nx*ny*nz match the core count
 
     QString      m_caseDir;
     int          m_physicalCores = 1;
@@ -60,8 +84,12 @@ private:
     QSpinBox*  m_vramSpin    = nullptr;  // % of GPU VRAM to allow (10-100)
     QLabel*    m_vramMbLbl   = nullptr;  // shows resolved MB
     QLabel*    m_statusLbl   = nullptr;
-    QDoubleSpinBox* m_stepsSpin = nullptr;
-    QSpinBox*  m_writeEvery  = nullptr;
+    QDoubleSpinBox* m_stepsSpin  = nullptr;
+    QDoubleSpinBox* m_writeEvery = nullptr;
+    // Values last read from / written to controlDict: anything equal to these was
+    // not edited by the user and must not be written back
+    double     m_syncedEndTime       = std::numeric_limits<double>::quiet_NaN();
+    double     m_syncedWriteInterval = std::numeric_limits<double>::quiet_NaN();
 
     struct GpuInfo { QString name; int vramMB; };
     QList<GpuInfo> m_gpus;

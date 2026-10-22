@@ -21,6 +21,7 @@
 #include <QTextStream>
 #include <QFile>
 #include <QDir>
+#include <QRegularExpression>
 
 CitationManager& CitationManager::instance()
 {
@@ -198,18 +199,28 @@ QString CitationManager::turbModelKey(const QString& ofModelName)
         {"SpalartAllmaras",    "spalartallmaras"},
         {"v2f",                "v2f"},
         {"Smagorinsky",        "smagorinsky"},
-        {"dynamicKEqn",        "dynamickeqn"},  // mapped to keqn below
+        {"dynamicKEqn",        "dynamickEqn"},  // registry key is mixed-case
         {"kEqn",               "keqn"},
         {"WALE",               "wale"},
         {"dynamicLagrangian",  "dynamiclagrangian"},
         {"dynamicSmagorinsky", "dynamicsmagorinsky"},
         {"Deardorff",          "deardorff"},
     };
-    // Also handle lowercase / partial matches
+    // Exact (case-insensitive) match first, then the longest contained name,
+    // so kOmegaSST does not resolve to kOmega nor dynamicSmagorinsky to Smagorinsky
+    const QString name = ofModelName.trimmed();
     for (auto it = table.begin(); it != table.end(); ++it)
-        if (ofModelName.contains(it.key(), Qt::CaseInsensitive))
+        if (name.compare(it.key(), Qt::CaseInsensitive) == 0)
             return it.value();
-    return {};
+
+    QString best;
+    int bestLen = 0;
+    for (auto it = table.begin(); it != table.end(); ++it)
+        if (it.key().size() > bestLen && name.contains(it.key(), Qt::CaseInsensitive)) {
+            best    = it.value();
+            bestLen = it.key().size();
+        }
+    return best;
 }
 
 void CitationManager::cite(const QString& key, const QString& caseDir)
@@ -234,6 +245,36 @@ QStringList CitationManager::consumePending()
     return msgs;
 }
 
+// Escape LaTeX specials so titles/journals like "Computers & Fluids" compile
+static QString bibEscape(const QString& s)
+{
+    QString out;
+    out.reserve(s.size() + 8);
+    for (const QChar c : s) {
+        switch (c.unicode()) {
+            case '\\': out += "\\textbackslash{}"; break;
+            case '&': case '%': case '$': case '#': case '_': case '{': case '}':
+                out += '\\'; out += c; break;
+            case '~': out += "\\textasciitilde{}"; break;
+            case '^': out += "\\textasciicircum{}"; break;
+            default:  out += c;
+        }
+    }
+    return out;
+}
+
+// "Fu, L., Hu, X. Y., & Adams, N. A." -> "Fu, L. and Hu, X. Y. and Adams, N. A."
+static QString bibAuthors(const QString& apa)
+{
+    if (apa.contains(" and ")) return apa;
+    QString s = apa;
+    s.replace(QRegularExpression(R"(,?\s*&\s*)"), ", ");
+    // An author ends where a comma follows the final initial's period
+    QStringList names = s.split(QRegularExpression(R"((?<=\.)\s*,\s*)"), Qt::SkipEmptyParts);
+    for (QString& n : names) n = n.trimmed();
+    return names.join(" and ");
+}
+
 void CitationManager::writeBib(const QString& caseDir) const
 {
     QDir dir(caseDir);
@@ -249,13 +290,13 @@ void CitationManager::writeBib(const QString& caseDir) const
         if (it == m_registry.end()) continue;
         const Citation& c = it.value();
         out << "@article{" << c.key << ",\n"
-            << "  author  = {" << c.authors << "},\n"
-            << "  title   = {" << c.title << "},\n"
-            << "  journal = {" << c.journal << "},\n"
-            << "  year    = {" << c.year << "},\n"
-            << "  volume  = {" << c.volume << "},\n"
-            << "  pages   = {" << c.pages << "},\n"
-            << "  doi     = {" << c.doi << "}\n"
+            << "  author  = {" << bibEscape(bibAuthors(c.authors)) << "},\n"
+            << "  title   = {" << bibEscape(c.title) << "},\n"
+            << "  journal = {" << bibEscape(c.journal) << "},\n"
+            << "  year    = {" << bibEscape(c.year) << "},\n"
+            << "  volume  = {" << bibEscape(c.volume) << "},\n"
+            << "  pages   = {" << c.pages << "},\n"   // "333--359": already BibTeX
+            << "  doi     = {" << c.doi << "}\n"       // verbatim field in biblatex
             << "}\n\n";
     }
 }

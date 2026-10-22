@@ -64,7 +64,8 @@ QString SurfaceMeshWriter::write(const CADGeometry& geo,
     writer->SetFileName(outPath.toStdString().c_str());
     writer->SetInputConnection(normFilter->GetOutputPort());
     writer->SetFileTypeToASCII();
-    writer->Write();
+    // vtkWriter::Write returns 1 on success; an empty path tells the caller it failed
+    if (writer->Write() != 1 || !QFileInfo::exists(outPath)) return {};
 
     return outPath;
 }

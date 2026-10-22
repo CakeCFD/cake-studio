@@ -29,66 +29,131 @@ defineTypeNameAndDebug(TenoStencilCache, 0);
 // Returns (4 x n) flat matrix so that:
 //   u(faceC) ≈ sum_j pinv[0*n+j]*u[j]
 //   ∂u/∂x    ≈ sum_j pinv[1*n+j]*u[j]   etc.
+//
+// Solved in centred form: with dbar = mean(d_j) and M = sum (d_j-dbar)(d_j-dbar)^T,
+//   grad = M^+ sum (d_j-dbar) u_j,   u_face = mean(u) - dbar.grad
+// which is identical to the 4x4 normal equations of the fit u = a + g.d when
+// M has full rank. M^+ is a rank-revealing pseudo-inverse: eigen-directions
+// whose eigenvalue is below 1e-12 of the largest (degenerate directions such
+// as the empty direction of a 2D case, or a planar stencil) get a zero
+// gradient component instead of a fit to round-off noise. The tolerance is
+// relative, so it is independent of the mesh length scale.
+namespace
+{
+
+// Cyclic Jacobi eigen-decomposition of a symmetric 3x3 matrix.
+// On return A holds the eigenvalues on its diagonal and V the eigenvectors
+// as columns.
+void jacobiEigen3(scalar A[3][3], scalar V[3][3])
+{
+    for (int r = 0; r < 3; ++r)
+        for (int c = 0; c < 3; ++c)
+            V[r][c] = (r == c) ? 1.0 : 0.0;
+
+    for (int sweep = 0; sweep < 50; ++sweep)
+    {
+        const scalar off =
+            std::abs(A[0][1]) + std::abs(A[0][2]) + std::abs(A[1][2]);
+        const scalar dia =
+            std::abs(A[0][0]) + std::abs(A[1][1]) + std::abs(A[2][2]);
+        if (off <= 1e-15*dia || off < VSMALL) break;
+
+        for (int p = 0; p < 2; ++p)
+        {
+            for (int q = p+1; q < 3; ++q)
+            {
+                if (std::abs(A[p][q]) < VSMALL) continue;
+
+                const scalar theta = (A[q][q] - A[p][p])/(2.0*A[p][q]);
+                const scalar t =
+                    (theta >= 0 ? 1.0 : -1.0)
+                   /(std::abs(theta) + std::sqrt(theta*theta + 1.0));
+                const scalar c = 1.0/std::sqrt(t*t + 1.0);
+                const scalar s = t*c;
+
+                for (int k = 0; k < 3; ++k)
+                {
+                    const scalar akp = A[k][p], akq = A[k][q];
+                    A[k][p] = c*akp - s*akq;
+                    A[k][q] = s*akp + c*akq;
+                }
+                for (int k = 0; k < 3; ++k)
+                {
+                    const scalar apk = A[p][k], aqk = A[q][k];
+                    A[p][k] = c*apk - s*aqk;
+                    A[q][k] = s*apk + c*aqk;
+                }
+                for (int k = 0; k < 3; ++k)
+                {
+                    const scalar vkp = V[k][p], vkq = V[k][q];
+                    V[k][p] = c*vkp - s*vkq;
+                    V[k][q] = s*vkp + c*vkq;
+                }
+            }
+        }
+    }
+}
+
+} // anonymous namespace
+
 scalarField TenoStencilCache::computeLSQ(
     const labelList& stencil,
     const vectorField& cc,
     const vector& faceC) const
 {
-    label n = stencil.size();
-    scalarField AT(4*n, 0.0);
-    scalar AtA[4][4] = {};
+    const label n = stencil.size();
+    scalarField pinv(4*n, 0.0);
+    if (n == 0) return pinv;
 
+    vector dbar = Zero;
+    for (label i = 0; i < n; ++i) dbar += cc[stencil[i]] - faceC;
+    dbar /= scalar(n);
+
+    scalar M[3][3] = {};
     for (label i = 0; i < n; ++i)
     {
-        vector d = cc[stencil[i]] - faceC;
-        scalar row[4] = {1.0, d.x(), d.y(), d.z()};
-        for (int r = 0; r < 4; ++r) AT[r*n + i] = row[r];
-        for (int r = 0; r < 4; ++r)
-            for (int c = 0; c < 4; ++c)
-                AtA[r][c] += row[r]*row[c];
+        const vector e = cc[stencil[i]] - faceC - dbar;
+        for (int r = 0; r < 3; ++r)
+            for (int c = 0; c < 3; ++c)
+                M[r][c] += e[r]*e[c];
     }
 
-    // Invert AtA via Gaussian elimination with partial pivoting
-    scalar inv[4][4] = {};
-    for (int i = 0; i < 4; ++i) inv[i][i] = 1.0;
-    scalar mat[4][4];
-    for (int r = 0; r < 4; ++r)
-        for (int c = 0; c < 4; ++c)
-            mat[r][c] = AtA[r][c];
+    // Pseudo-inverse of M with a tolerance relative to its largest eigenvalue
+    scalar V[3][3];
+    jacobiEigen3(M, V);
 
-    for (int col = 0; col < 4; ++col)
+    const scalar lamMax =
+        max(std::abs(M[0][0]), max(std::abs(M[1][1]), std::abs(M[2][2])));
+    const scalar tol = 1e-12*lamMax;
+
+    scalar Minv[3][3] = {};
+    if (lamMax > VSMALL)
     {
-        int pivot = col;
-        for (int r = col+1; r < 4; ++r)
-            if (std::abs(mat[r][col]) > std::abs(mat[pivot][col])) pivot = r;
-        for (int c = 0; c < 4; ++c)
+        for (int k = 0; k < 3; ++k)
         {
-            std::swap(mat[col][c], mat[pivot][c]);
-            std::swap(inv[col][c], inv[pivot][c]);
-        }
-        scalar diag = mat[col][col];
-        if (std::abs(diag) < 1e-30) {
-            // Near-singular column: zero out this row so it can't corrupt the back-substitution
-            // of subsequent columns, and drop this polynomial term from the fit.
-            for (int c = 0; c < 4; ++c) { mat[col][c] = 0.0; inv[col][c] = 0.0; }
-            continue;
-        }
-        for (int c = 0; c < 4; ++c) { mat[col][c] /= diag; inv[col][c] /= diag; }
-        for (int r = 0; r < 4; ++r)
-        {
-            if (r == col) continue;
-            scalar f = mat[r][col];
-            for (int c = 0; c < 4; ++c)
-            { mat[r][c] -= f*mat[col][c]; inv[r][c] -= f*inv[col][c]; }
+            const scalar lam = M[k][k];
+            if (lam <= tol) continue;   // degenerate direction: zero gradient
+            for (int r = 0; r < 3; ++r)
+                for (int c = 0; c < 3; ++c)
+                    Minv[r][c] += V[r][k]*V[c][k]/lam;
         }
     }
 
-    // pinv = inv(AtA) * A^T  (4 x n)
-    scalarField pinv(4*n, 0.0);
-    for (int r = 0; r < 4; ++r)
-        for (label j = 0; j < n; ++j)
-            for (int k = 0; k < 4; ++k)
-                pinv[r*n + j] += inv[r][k] * AT[k*n + j];
+    // Rows 1..3: gradient weights w_j = M^+ (d_j - dbar)
+    // Row 0:     face value weights 1/n - dbar.w_j
+    for (label j = 0; j < n; ++j)
+    {
+        const vector e = cc[stencil[j]] - faceC - dbar;
+        vector w = Zero;
+        for (int r = 0; r < 3; ++r)
+            for (int c = 0; c < 3; ++c)
+                w[r] += Minv[r][c]*e[c];
+
+        pinv[0*n + j] = 1.0/scalar(n) - (dbar & w);
+        pinv[1*n + j] = w.x();
+        pinv[2*n + j] = w.y();
+        pinv[3*n + j] = w.z();
+    }
 
     return pinv;
 }
@@ -103,6 +168,11 @@ void TenoStencilCache::buildStencils(const fvMesh& mesh)
     const labelListList& cn = mesh.cellCells();
 
     label nFaces = own.size();
+
+    // Full rebuild: discard all previous entries. resize() alone would keep
+    // the old stencils, so the appends below would duplicate them on every
+    // movePoints() and leave stale cell labels after updateMesh().
+    faceData_.clear();
     faceData_.resize(nFaces);
 
     forAll(own, facei)

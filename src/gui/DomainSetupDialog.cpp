@@ -37,7 +37,10 @@
 #include <QMessageBox>
 #include <QSettings>
 #include <QRegularExpression>
+#include "BCEditorDialog.h"   // OFDict scanner
+#include <algorithm>
 #include <cmath>
+#include <optional>
 
 // STL bounds parser
 
@@ -340,12 +343,41 @@ void DomainSetupDialog::onGenerate()
         QString txt = uFile.readAll();
         uFile.close();
 
-        // Extract speed magnitude from the first uniform vector in the file
-        QRegularExpression reMag(R"(uniform\s*\(\s*([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s*\))");
-        auto m = reMag.match(txt);
-        if (!m.hasMatch()) continue;
-        double ux = m.captured(1).toDouble(), uy = m.captured(2).toDouble(), uz = m.captured(3).toDouble();
-        double spd = std::sqrt(ux*ux + uy*uy + uz*uz);
+        // Only internalField and the inlet patch's value are rotated: walls
+        // (fixedValue uniform (0 0 0)) and other patches must stay untouched
+        using namespace OFDict;
+        static const QRegularExpression reUni(
+            R"(^uniform\s*\(\s*([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s*\)$)");
+        struct Slot { int start, end; double mag; };
+        auto slotOf = [&](const DictEntry* e) -> std::optional<Slot> {
+            if (!e || e->braceOpen >= 0) return std::nullopt;
+            auto mm = reUni.match(entryValue(txt, *e));
+            if (!mm.hasMatch()) return std::nullopt;
+            double a = mm.captured(1).toDouble(), b = mm.captured(2).toDouble(),
+                   c = mm.captured(3).toDouble();
+            // Replace just the value text after the keyword
+            int vs = skipWsComments(txt, e->keyEnd, e->end);
+            int ve = txt.lastIndexOf(';', e->end - 1);
+            if (ve < vs) return std::nullopt;
+            return Slot{vs, ve, std::sqrt(a*a + b*b + c*c)};
+        };
+
+        const QList<DictEntry> top = topLevelEntries(txt, 0, txt.size());
+        std::optional<Slot> internal = slotOf(findEntry(top, "internalField"));
+        QList<Slot> inletSlots;
+        if (const DictEntry* bf = findEntry(top, "boundaryField"); bf && bf->braceOpen >= 0 && bf->braceClose >= 0) {
+            const QList<DictEntry> patches = topLevelEntries(txt, bf->braceOpen + 1, bf->braceClose);
+            if (const DictEntry* in = findEntry(patches, "inlet"); in && in->braceOpen >= 0 && in->braceClose >= 0) {
+                const QList<DictEntry> body = topLevelEntries(txt, in->braceOpen + 1, in->braceClose);
+                for (const char* k : {"value", "freestreamValue", "inletValue"})
+                    if (auto s = slotOf(findEntry(body, k))) inletSlots << *s;
+            }
+        }
+
+        // Speed from the inlet (a zero internalField is a legitimate start-from-rest)
+        double spd = 0.0;
+        for (const Slot& s : inletSlots) spd = std::max(spd, s.mag);
+        if (spd < 1e-9 && internal) spd = internal->mag;
         if (spd < 1e-9) continue;
 
         double aoaRad = aoa * M_PI / 180.0;
@@ -357,9 +389,15 @@ void DomainSetupDialog::onGenerate()
         else if (axis == "+Y" || axis == "-Y") newVec = QString("(%2 %1 0)").arg(sign*u0,0,'g',6).arg(u1,0,'g',6);
         else                                   newVec = QString("(0 %2 %1)").arg(sign*u0,0,'g',6).arg(u1,0,'g',6);
 
-        // Replace every velocity uniform vector in the file
-        QRegularExpression reVec(R"(uniform\s*\(\s*[\d.eE+\-]+\s+[\d.eE+\-]+\s+[\d.eE+\-]+\s*\))");
-        txt.replace(reVec, "uniform " + newVec);
+        // Back to front so earlier offsets stay valid; zero-valued entries
+        // (start from rest, wall-like inletValue) keep their value
+        QList<Slot> edits = inletSlots;
+        if (internal) edits << *internal;
+        std::sort(edits.begin(), edits.end(),
+                  [](const Slot& a, const Slot& b) { return a.start > b.start; });
+        for (const Slot& s : edits)
+            if (s.mag >= 1e-9)
+                txt.replace(s.start, s.end - s.start, "uniform " + newVec);
 
         if (uFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
             QTextStream(&uFile) << txt;
@@ -412,7 +450,7 @@ bool DomainSetupDialog::writeBlockMeshDict()
         return QString("    (%1 %2 %3)\n").arg(a,0,'f',6).arg(b,0,'f',6).arg(c,0,'f',6);
     };
 
-    // inlet / outlet / sides based on flow axis
+    // inlet / outlet / symmetry side patches based on flow axis
     // Vertex indices:
     //   v0=(x0,y0,z0) v1=(x1,y0,z0) v2=(x1,y1,z0) v3=(x0,y1,z0)
     //   v4=(x0,y0,z1) v5=(x1,y0,z1) v6=(x1,y1,z1) v7=(x0,y1,z1)
@@ -421,32 +459,28 @@ bool DomainSetupDialog::writeBlockMeshDict()
     //   Y-min(-Y): (0 1 5 4)    Y-max(+Y): (3 7 6 2)
     //   Z-min(-Z): (0 3 2 1)    Z-max(+Z): (4 5 6 7)
 
-    QString inletFace, outletFace, sideFaces;
+    // Side patches use the same names as BlockMeshWriter / CaseGenerator's 0/
+    // files (top=+Y, bottom=-Y, front=+Z, back=-Z) so every patch has a BC.
+    // X faces are only sides for Y/Z flow axes, which the UI does not offer.
+    struct Face { QString name, verts; };
+    QList<Face> faces = {
+        {"left",   "(0 4 7 3)"}, {"right", "(1 2 6 5)"},   // -X, +X
+        {"bottom", "(0 1 5 4)"}, {"top",   "(3 7 6 2)"},   // -Y, +Y
+        {"back",   "(0 3 2 1)"}, {"front", "(4 5 6 7)"},   // -Z, +Z
+    };
     QString axis = m_flowAxis->currentData().toString();
 
-    auto sides4 = [](const QString& a, const QString& b, const QString& c, const QString& d) {
-        return QString("            %1\n            %2\n            %3\n            %4\n")
-               .arg(a,b,c,d);
-    };
+    // Index of the min/max face along the flow axis
+    int axisIdx = axis.endsWith('X') ? 0 : axis.endsWith('Y') ? 2 : 4;
+    bool positive = axis.startsWith('+');
+    QString inletFace  = faces[axisIdx + (positive ? 0 : 1)].verts;
+    QString outletFace = faces[axisIdx + (positive ? 1 : 0)].verts;
 
-    if (axis == "+X") {
-        inletFace  = "(0 4 7 3)";  outletFace = "(1 2 6 5)";
-        sideFaces  = sides4("(0 1 5 4)","(3 7 6 2)","(0 3 2 1)","(4 5 6 7)");
-    } else if (axis == "-X") {
-        inletFace  = "(1 2 6 5)";  outletFace = "(0 4 7 3)";
-        sideFaces  = sides4("(0 1 5 4)","(3 7 6 2)","(0 3 2 1)","(4 5 6 7)");
-    } else if (axis == "+Y") {
-        inletFace  = "(0 1 5 4)";  outletFace = "(3 7 6 2)";
-        sideFaces  = sides4("(0 4 7 3)","(1 2 6 5)","(0 3 2 1)","(4 5 6 7)");
-    } else if (axis == "-Y") {
-        inletFace  = "(3 7 6 2)";  outletFace = "(0 1 5 4)";
-        sideFaces  = sides4("(0 4 7 3)","(1 2 6 5)","(0 3 2 1)","(4 5 6 7)");
-    } else if (axis == "+Z") {
-        inletFace  = "(0 3 2 1)";  outletFace = "(4 5 6 7)";
-        sideFaces  = sides4("(0 4 7 3)","(1 2 6 5)","(0 1 5 4)","(3 7 6 2)");
-    } else {  // -Z
-        inletFace  = "(4 5 6 7)";  outletFace = "(0 3 2 1)";
-        sideFaces  = sides4("(0 4 7 3)","(1 2 6 5)","(0 1 5 4)","(3 7 6 2)");
+    QString sidePatches;
+    for (int i = 0; i < faces.size(); ++i) {
+        if (i == axisIdx || i == axisIdx + 1) continue;
+        sidePatches += QString("    %1\n    {\n        type symmetry;\n        faces ( %2 );\n    }\n")
+                           .arg(faces[i].name, faces[i].verts);
     }
 
     QString text = foamHeader("dictionary", "blockMeshDict");
@@ -466,9 +500,8 @@ bool DomainSetupDialog::writeBlockMeshDict()
     text += "boundary\n(\n";
     text += "    inlet\n    {\n        type patch;\n        faces ( " + inletFace + " );\n    }\n";
     text += "    outlet\n    {\n        type patch;\n        faces ( " + outletFace + " );\n    }\n";
-    text += "    sides\n    {\n        type symmetry;\n        faces\n        (\n";
-    text += sideFaces;
-    text += "        );\n    }\n);\n";
+    text += sidePatches;
+    text += ");\n";
 
     QFile f(m_caseDir + "/system/blockMeshDict");
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;

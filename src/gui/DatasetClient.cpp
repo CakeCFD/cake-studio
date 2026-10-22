@@ -136,21 +136,82 @@ void DatasetClient::queryFieldRange(const QString& dataset, const QString& field
 
 void DatasetClient::cancelRange()
 {
-    if (m_rangeJob) m_rangeJob->cancelled = true;
+    // New generation first so the aborted replies' finished() is ignored
+    ++m_generation;
+    const auto inflight = m_inflight;
+    m_inflight.clear();
+    for (const QPointer<QNetworkReply>& r : inflight)
+        if (r) r->abort();
+    clearRangeJob();
+}
+
+void DatasetClient::track(QNetworkReply* reply)
+{
+    reply->setProperty("generation", m_generation);
+    m_inflight.removeAll(QPointer<QNetworkReply>());
+    m_inflight << reply;
+}
+
+void DatasetClient::clearRangeJob()
+{
+    delete m_rangeJob;
+    m_rangeJob = nullptr;
 }
 
 // SOAP batch
+
+QString DatasetClient::soapNamespace(const QString& endpoint)
+{
+    // JHTDB's WSDL targetNamespace, independent of the server's URL path.
+    // Other SOAP servers keep the folder-derived namespace.
+    static const QString kJhtdbNs = "http://turbulence.pha.jhu.edu/";
+    const QUrl url(endpoint);
+    if (url.host().endsWith("jhu.edu", Qt::CaseInsensitive))
+        return kJhtdbNs;
+    return url.adjusted(QUrl::RemoveFilename | QUrl::RemoveQuery).toString();
+}
+
+QString DatasetClient::soapMethod(const QString& field)
+{
+    return k_fieldMeta.value(field, FieldMeta{"GetVelocity", {"x","y","z"}, 3}).method;
+}
+
+QString DatasetClient::spatialInterpName(SpatialInterp s, const QString& method)
+{
+    // Gradient methods take the finite-difference members of JHTDB's
+    // SpatialInterpolation enum (None_Fd4, Fd4Lag4, None_Fd6, None_Fd8)
+    if (method.endsWith("Gradient")) {
+        switch (s) {
+        case SpatialInterp::Lag4: return "Fd4Lag4";
+        case SpatialInterp::Lag6: return "None_Fd6";
+        case SpatialInterp::Lag8: return "None_Fd8";
+        default:                  return "None_Fd4";
+        }
+    }
+    switch (s) {
+    case SpatialInterp::Lag4: return "Lag4";
+    case SpatialInterp::Lag6: return "Lag6";
+    case SpatialInterp::Lag8: return "Lag8";
+    default:                  return "None";
+    }
+}
+
+QString DatasetClient::temporalInterpName(TemporalInterp t)
+{
+    return t == TemporalInterp::PCHIP ? "PCHIP" : "None";
+}
 
 QByteArray DatasetClient::buildSoapBody(const QString& method, const QString& dataset,
                                          double time, const QVector<double>& points) const
 {
     QString pts;
     for (int i = 0; i + 2 < points.size(); i += 3)
-        pts += QString("<Point3 xmlns=\"\"><x>%1</x><y>%2</y><z>%3</z></Point3>")
-               .arg(points[i],   0, 'f', 8)
-               .arg(points[i+1], 0, 'f', 8)
-               .arg(points[i+2], 0, 'f', 8);
+        pts += QString("<Point3><x>%1</x><y>%2</y><z>%3</z></Point3>")
+               .arg(points[i],   0, 'g', 15)
+               .arg(points[i+1], 0, 'g', 15)
+               .arg(points[i+2], 0, 'g', 15);
 
+    // Element names / enum values follow the JHTDB turbulence.asmx WSDL
     return QString(
         "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
         "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\">"
@@ -159,21 +220,20 @@ QByteArray DatasetClient::buildSoapBody(const QString& method, const QString& da
         "<authToken>%2</authToken>"
         "<dataset>%3</dataset>"
         "<time>%4</time>"
-        "<spatialInterp>%5</spatialInterp>"
-        "<temporalInterp>%6</temporalInterp>"
-        "<FD_Lag4_width>0</FD_Lag4_width>"
+        "<spatialInterpolation>%5</spatialInterpolation>"
+        "<temporalInterpolation>%6</temporalInterpolation>"
         "<points>%7</points>"
         "</%1>"
         "</soap:Body>"
         "</soap:Envelope>")
         .arg(method)
-        .arg(m_token)
-        .arg(dataset)
-        .arg(time, 0, 'f', 8)
-        .arg(static_cast<int>(m_spatialInterp))
-        .arg(static_cast<int>(m_temporalInterp))
+        .arg(m_token.toHtmlEscaped())
+        .arg(dataset.toHtmlEscaped())
+        .arg(time, 0, 'g', 15)
+        .arg(spatialInterpName(m_spatialInterp, method))
+        .arg(temporalInterpName(m_temporalInterp))
         .arg(pts)
-        .arg(QUrl(m_endpoint).adjusted(QUrl::RemoveFilename | QUrl::RemoveQuery).toString())
+        .arg(soapNamespace(m_endpoint).toHtmlEscaped())
         .toUtf8();
 }
 
@@ -184,9 +244,8 @@ void DatasetClient::querySoap(const QString& dataset, const QString& field,
 
     QNetworkRequest req{QUrl{m_endpoint}};
     req.setHeader(QNetworkRequest::ContentTypeHeader, "text/xml; charset=utf-8");
-    QString ns = QUrl(m_endpoint).adjusted(QUrl::RemoveFilename | QUrl::RemoveQuery).toString();
     req.setRawHeader("SOAPAction",
-        QString("\"%1%2\"").arg(ns, meta.method).toUtf8());
+        QString("\"%1%2\"").arg(soapNamespace(m_endpoint), meta.method).toUtf8());
     req.setRawHeader("User-Agent", "CakeCFD/1.0");
 
     auto* reply = m_nam->post(req, buildSoapBody(meta.method, dataset, time, points));
@@ -194,6 +253,7 @@ void DatasetClient::querySoap(const QString& dataset, const QString& field,
     reply->setProperty("field",   field);
     reply->setProperty("time",    time);
     reply->setProperty("isSoap", true);
+    track(reply);
     connect(reply, &QNetworkReply::finished, this, &DatasetClient::onQueryReply);
 }
 
@@ -222,6 +282,7 @@ void DatasetClient::queryCustom(const QString& dataset, const QString& field,
     reply->setProperty("field",   field);
     reply->setProperty("time",    time);
     reply->setProperty("isSoap", false);
+    track(reply);
     connect(reply, &QNetworkReply::finished, this, &DatasetClient::onQueryReply);
 }
 
@@ -280,6 +341,7 @@ void DatasetClient::queryGraphQL(const QString& dataset, const QString& field,
     reply->setProperty("isSoap",    false);
     reply->setProperty("isGraphQL", true);
     reply->setProperty("nPoints",   points.size() / 3);
+    track(reply);
     connect(reply, &QNetworkReply::finished, this, &DatasetClient::onQueryReply);
 }
 
@@ -313,7 +375,10 @@ void DatasetClient::onListReply()
         auto root = doc.object();
         if (root.contains("errors")) {
             auto errs = root["errors"].toArray();
-            emit error("GraphQL: " + errs.first().toObject()["message"].toString()); return;
+            emit error("GraphQL: " + (errs.isEmpty()
+                ? QString("unspecified error")
+                : errs.first().toObject()["message"].toString()));
+            return;
         }
         auto datasets = root["data"].toObject()
                             ["getQueryOptions"].toObject()
@@ -353,13 +418,22 @@ void DatasetClient::onQueryReply()
     double  time    = reply->property("time").toDouble();
     bool    soap    = reply->property("isSoap").toBool();
     reply->deleteLater();
+    m_inflight.removeAll(QPointer<QNetworkReply>(reply));
+
+    // Issued before a Cancel: drop it so it cannot overwrite newer results
+    if (reply->property("generation").toULongLong() != m_generation) return;
+
+    // Every failure path ends the range job so later queries are not refused
+    auto fail = [this](const QString& msg) {
+        emit error(msg);
+        clearRangeJob();
+    };
 
     if (reply->error() != QNetworkReply::NoError) {
         QString msg = reply->errorString();
         if (reply->error() == QNetworkReply::HostNotFoundError)
             msg += " - WSL fix: sudo sh -c 'echo 128.220.122.31 turbulence.idies.jhu.edu >> /etc/hosts'";
-        emit error("Query: " + msg);
-        if (m_rangeJob) { delete m_rangeJob; m_rangeJob = nullptr; }
+        fail("Query: " + msg);
         return;
     }
 
@@ -369,9 +443,10 @@ void DatasetClient::onQueryReply()
     if (reply->property("isGraphQL").toBool()) {
         auto root = QJsonDocument::fromJson(raw).object();
         if (root.contains("errors")) {
-            emit error("GraphQL: " + root["errors"].toArray().first()
-                                         .toObject()["message"].toString());
-            if (m_rangeJob) { delete m_rangeJob; m_rangeJob = nullptr; }
+            auto errs = root["errors"].toArray();
+            fail("GraphQL: " + (errs.isEmpty()
+                ? QString("unspecified error")
+                : errs.first().toObject()["message"].toString()));
             return;
         }
         // Collect doubles from a JSONObject value, trying known component orderings first.
@@ -401,8 +476,7 @@ void DatasetClient::onQueryReply()
             collect(QJsonValue(data[QString("p%1").arg(i)]), result);
 
         if (result.isEmpty()) {
-            emit error("GraphQL response has no numeric data: " + QString::fromUtf8(raw).left(400));
-            if (m_rangeJob) { delete m_rangeJob; m_rangeJob = nullptr; }
+            fail("GraphQL response has no numeric data: " + QString::fromUtf8(raw).left(400));
             return;
         }
     } else if (soap) {
@@ -423,8 +497,7 @@ void DatasetClient::onQueryReply()
             }
         }
         if (result.isEmpty()) {
-            emit error("SOAP response: " + QString::fromUtf8(raw).left(400));
-            if (m_rangeJob) { delete m_rangeJob; m_rangeJob = nullptr; }
+            fail("SOAP response: " + QString::fromUtf8(raw).left(400));
             return;
         }
     } else {
@@ -432,29 +505,10 @@ void DatasetClient::onQueryReply()
         QSettings settings("CakeCFD", "DatasetPanel");
         QString jsonPath = settings.value("customApi/jsonPath", "").toString();
         QString keysStr  = settings.value("customApi/componentKeys", "").toString();
-        QStringList keys;
-        for (const QString& k : keysStr.split(',', Qt::SkipEmptyParts)) keys << k.trimmed();
 
-        QJsonParseError err;
-        auto doc = QJsonDocument::fromJson(raw, &err);
-        if (err.error != QJsonParseError::NoError) {
-            emit error("JSON parse: " + err.errorString()); return;
-        }
-        QJsonValue cur = doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object());
-        if (!jsonPath.isEmpty())
-            for (const QString& seg : jsonPath.split('.', Qt::SkipEmptyParts))
-                cur = cur.isObject() ? cur.toObject().value(seg) : QJsonValue();
-
-        if (cur.isArray()) {
-            for (const QJsonValue& item : cur.toArray()) {
-                if (item.isObject() && !keys.isEmpty())
-                    for (const QString& k : keys) result << item.toObject().value(k).toDouble();
-                else if (item.isDouble())
-                    result << item.toDouble();
-            }
-        }
-        if (result.isEmpty() && doc.isArray())
-            for (const auto& v : doc.array()) result << v.toDouble();
+        QString err;
+        result = parseCustomJson(raw, jsonPath, keysStr.split(','), &err);
+        if (!err.isEmpty()) { fail("JSON parse: " + err); return; }
     }
 
     // Range-job sequencing
@@ -465,14 +519,74 @@ void DatasetClient::onQueryReply()
         if (m_rangeJob->step < m_rangeJob->times.size()) {
             fireNextRangeStep();
         } else {
-            emit queryRangeFinished(m_rangeJob->dataset, m_rangeJob->field,
-                                    m_rangeJob->times, m_rangeJob->results);
-            delete m_rangeJob; m_rangeJob = nullptr;
+            // Detach before emitting so a slot may start a new range query
+            RangeJob* job = m_rangeJob;
+            m_rangeJob = nullptr;
+            emit queryRangeFinished(job->dataset, job->field, job->times, job->results);
+            delete job;
         }
     } else {
-        if (m_rangeJob) { delete m_rangeJob; m_rangeJob = nullptr; }  // cancelled
+        clearRangeJob();
         emit queryFinished(dataset, field, time, result);
     }
+}
+
+// Walk one dotted segment: object key, or array index when numeric
+static QJsonValue jsonStep(const QJsonValue& cur, const QString& seg)
+{
+    if (cur.isObject()) return cur.toObject().value(seg);
+    if (cur.isArray()) {
+        bool ok = false;
+        int idx = seg.toInt(&ok);
+        const QJsonArray arr = cur.toArray();
+        return (ok && idx >= 0 && idx < arr.size()) ? arr.at(idx) : QJsonValue();
+    }
+    return QJsonValue();
+}
+
+QVector<double> DatasetClient::parseCustomJson(const QByteArray& raw, const QString& path,
+                                               const QStringList& keysIn, QString* errOut)
+{
+    QJsonParseError err;
+    auto doc = QJsonDocument::fromJson(raw, &err);
+    if (err.error != QJsonParseError::NoError) {
+        if (errOut) *errOut = err.errorString();
+        return {};
+    }
+
+    QStringList keys;
+    for (const QString& k : keysIn)
+        if (!k.trimmed().isEmpty()) keys << k.trimmed();
+
+    QJsonValue cur = doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object());
+    for (const QString& seg : path.trimmed().split('.', Qt::SkipEmptyParts)) {
+        cur = jsonStep(cur, seg);
+        if (cur.isUndefined() || cur.isNull()) break;
+    }
+
+    QVector<double> result;
+    if (cur.isArray()) {
+        for (const QJsonValue& item : cur.toArray()) {
+            if (item.isObject() && !keys.isEmpty()) {
+                const QJsonObject obj = item.toObject();
+                for (const QString& k : keys) {
+                    // Literal key first (it may itself contain dots), then nested path
+                    QJsonValue v = obj.value(k);
+                    if (v.isUndefined() && k.contains('.')) {
+                        v = item;
+                        for (const QString& seg : k.split('.', Qt::SkipEmptyParts))
+                            v = jsonStep(v, seg);
+                    }
+                    result << v.toDouble();
+                }
+            } else if (item.isDouble()) {
+                result << item.toDouble();
+            }
+        }
+    }
+    if (result.isEmpty() && doc.isArray())
+        for (const auto& v : doc.array()) result << v.toDouble();
+    return result;
 }
 
 // turb stats

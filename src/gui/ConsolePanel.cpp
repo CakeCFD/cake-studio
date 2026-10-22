@@ -361,19 +361,37 @@ void ConsolePanel::detectAndCiteSchemes() {
 }
 
 void ConsolePanel::onSolverFinished(int exitCode) {
-    m_statusLabel->setText(exitCode == 0 ? "Finished" : "Failed (code " + QString::number(exitCode) + ")");
+    const bool stopped = m_runner->lastRunStopped();
+    m_statusLabel->setText(stopped ? "Stopped"
+                         : exitCode == 0 ? "Finished" : "Failed (code " + QString::number(exitCode) + ")");
     m_runBtn->setEnabled(true);
     m_stopBtn->setEnabled(false);
-    appendLine("=== Solver finished (exit " + QString::number(exitCode) + ") ===");
+    appendLine(stopped ? QString("=== Solver stopped by user ===")
+                       : "=== Solver finished (exit " + QString::number(exitCode) + ") ===");
 
     QString caseDir = m_casePathEdit->text().trimmed();
 
     if (!m_currentRunDir.isEmpty()) {
-        if (exitCode == 0) {
+        // Did the solver get far enough to write anything worth keeping?
+        bool producedOutput = false;
+        for (const QString& e : QDir(caseDir).entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            bool ok; double v = e.toDouble(&ok);
+            if (ok && v > 0) { producedOutput = true; break; }
+        }
+        if (exitCode == 0 && !stopped) {
             RunLogger::finishRun(m_currentRunDir, caseDir, true);
             appendLine(QString("[Run] Saved: %1").arg(QFileInfo(m_currentRunDir).fileName()));
+        } else if (stopped) {
+            // User interrupted: keep the run, flagged as stopped
+            RunLogger::finishRun(m_currentRunDir, caseDir, false, true);
+            appendLine(QString("[Run] Saved (stopped): %1").arg(QFileInfo(m_currentRunDir).fileName()));
+        } else if (producedOutput) {
+            // Diverged/crashed mid-run: keep it so the failure can be inspected
+            RunLogger::finishRun(m_currentRunDir, caseDir, false);
+            appendLine(QString("[Run] Solver exited with errors: saved as %1 (not converged).")
+                           .arg(QFileInfo(m_currentRunDir).fileName()));
         } else {
-            // Solver crashed: discard the run log, don't pollute run history
+            // Nothing written: discard the run log, don't pollute run history
             QDir(m_currentRunDir).removeRecursively();
             appendLine("[Run] Solver exited with errors: run not saved.");
         }
@@ -438,6 +456,11 @@ void ConsolePanel::setSolver(const QString& solver)
 void ConsolePanel::onRunClicked() {
     QString caseDir = m_casePathEdit->text().trimmed();
     QString solver  = m_solverCombo->currentText();
+    if (m_runner->isRunning()) {
+        // startRun() would wipe the live run's time dirs and lose m_currentRunDir
+        appendLine("[Run] A solver is already running: stop it first.");
+        return;
+    }
     if (caseDir.isEmpty() || solver.isEmpty()) {
         appendLine("[ERROR] Set solver and case directory first.");
         return;
@@ -615,6 +638,11 @@ void ConsolePanel::onRunClicked() {
     appendLine(QString("[Run] Logging to %1").arg(QFileInfo(m_currentRunDir).fileName()));
     if (useGpu) appendLine(QString("[Run] GPU solver enabled (VRAM limit: %1%).").arg(qRound(vramFraction * 100)));
     m_runner->run(solver, caseDir, {}, useGpu, vramFraction);
+    if (!m_runner->isRunning() && !m_currentRunDir.isEmpty()) {
+        // Failed to start: no solverFinished will follow, and there is nothing to keep
+        QDir(m_currentRunDir).removeRecursively();
+        m_currentRunDir.clear();
+    }
 }
 
 void ConsolePanel::onStopClicked() {
@@ -631,7 +659,7 @@ void ConsolePanel::execCommand(const QString& cmd)
     m_cmdEdit->clear();
 
     QString caseDir = m_casePathEdit->text().trimmed();
-    appendLine("<span style=\'color:#6af;\'>$ " + cmd + "</span>");
+    appendLine("$ " + cmd);  // plain text: the output pane is a QPlainTextEdit
 
     if (m_cmdProcess && m_cmdProcess->state() != QProcess::NotRunning) {
         appendLine(QString("[busy: previous command still running]"));

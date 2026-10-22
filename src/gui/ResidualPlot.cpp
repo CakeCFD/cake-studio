@@ -46,18 +46,24 @@ void ResidualPlot::addResidual(const Residual& r) {
     if (!m_series.contains(r.field))
         m_series[r.field] = {QVector<double>{}, colorForField(r.field)};
 
+    // values[i] is iteration i+1, matching the x mapping in drawAxes/drawSeries.
+    // Residuals printed before the first Time line count as iteration 1.
+    const int iter = std::max(1, r.iteration);
     Series& s = m_series[r.field];
-    while (s.values.size() < r.iteration - 1)
+    while (s.values.size() < iter)
         s.values.append(std::numeric_limits<double>::quiet_NaN());
-    s.values.append(r.initial > 0 ? r.initial : 1e-20);
+    double& slot = s.values[iter - 1];
+    if (std::isnan(slot))
+        slot = r.initial > 0 ? r.initial : 1e-20;
 
-    m_maxIter = std::max(m_maxIter, r.iteration);
+    m_maxIter = std::max(m_maxIter, iter);
     if (!m_coalesce.isActive()) m_coalesce.start();
 }
 
 void ResidualPlot::clear() {
     m_series.clear();
     m_maxIter = 0;
+    m_colorIdx = 0;
     update();
 }
 
