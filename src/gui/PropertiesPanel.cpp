@@ -117,6 +117,29 @@ static bool writeKey(const QString& filePath, const QString& key, const QString&
     return true;
 }
 
+// Rewrites both turbulence dicts so simulationType always matches the chosen model
+static void writeTurbulenceDicts(const QString& caseDir, const QString& model)
+{
+    static const QStringList les = {"kOmegaSSTDES","Smagorinsky","WALE","dynamicKEqn","dynamicLagrangian"};
+    QString body;
+    if (model == "laminar")
+        body = "simulationType laminar;\n";
+    else if (les.contains(model))
+        body = "simulationType LES;\n\nLES\n{\n    LESModel     " + model + ";\n"
+               "    turbulence   on;\n    printCoeffs  on;\n    delta        cubeRootVol;\n"
+               "    cubeRootVolCoeffs { deltaCoeff 1; }\n}\n";
+    else
+        body = "simulationType RAS;\n\nRAS\n{\n    model       " + model + ";\n"
+               "    turbulence  on;\n    printCoeffs on;\n}\n";
+
+    for (const QString& name : { QString("turbulenceProperties"), QString("momentumTransport") }) {
+        QFile f(caseDir + "/constant/" + name);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+            f.write(("FoamFile\n{ version 2.0; format ascii; class dictionary; object "
+                     + name + "; }\n\n" + body).toLocal8Bit());
+    }
+}
+
 // PropertiesPanel
 
 PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent)
@@ -330,7 +353,10 @@ void PropertiesPanel::addComboRow(const QString& label, const QStringList& optio
 
     auto* combo = new QComboBox(m_content);
     combo->addItems(options);
-    int idx = options.indexOf(current);
+    // A value outside the list is added so the row never shows the first option by mistake
+    if (!current.isEmpty() && current != "-" && !options.contains(current))
+        combo->addItem(current);
+    int idx = combo->findText(current);
     if (idx >= 0) combo->setCurrentIndex(idx);
     combo->setStyleSheet(QString(
         "QComboBox { background: transparent; border: 1px solid transparent; "
@@ -402,17 +428,23 @@ void PropertiesPanel::populateCase(const QString& caseDir)
     if (!steps.isEmpty()) addRow("Latest", steps.last() + " s");
 
     // Physics
-    QString turbPath = caseDir + "/constant/momentumTransport";
-    if (!QFile::exists(turbPath)) turbPath = caseDir + "/constant/turbulenceProperties";
+    QString turbPath = caseDir + "/constant/turbulenceProperties";
+    if (!QFile::exists(turbPath)) turbPath = caseDir + "/constant/momentumTransport";
     QString mtt = slurp(turbPath);
     if (!mtt.isEmpty()) {
         QString tpPath = caseDir + "/constant/transportProperties";
         if (!QFile::exists(tpPath)) tpPath = caseDir + "/constant/physicalProperties";
         QString tp = slurp(tpPath);
 
+        // simulationType decides laminar, and LES dicts may name the model LESModel
+        QString turb = dictVal(mtt, "simulationType") == "laminar" ? QString("laminar") : dictVal(mtt, "model");
+        if (turb == "-") turb = dictVal(mtt, "LESModel");
+        if (turb == "-") turb = dictVal(mtt, "RASModel");
+
         addSection("Physics");
-        addComboRow("Turbulence", {"laminar","kOmegaSST","kEpsilon","SpalartAllmaras","kOmegaSSTDES"},
-                    dictVal(mtt, "model"), [turbPath](const QString& v){ writeKey(turbPath, "model", v); });
+        addComboRow("Turbulence", {"laminar","kOmegaSST","kEpsilon","SpalartAllmaras","kOmegaSSTDES",
+                                   "Smagorinsky","WALE","dynamicKEqn","dynamicLagrangian"},
+                    turb, [caseDir](const QString& v){ writeTurbulenceDicts(caseDir, v); });
         if (!tp.isEmpty())
             addEditableRow("ν (m²/s)", dictVal(tp, "nu"), [tpPath](const QString& v){ writeKey(tpPath, "nu", v); });
     }

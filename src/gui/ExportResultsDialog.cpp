@@ -463,13 +463,13 @@ static QStringList parseForceLine(const QString& raw)
     return clean.split(QRegularExpression(R"(\s+)"), Qt::SkipEmptyParts);
 }
 
-// OF2412 ESI keeps the turbulence dictionary in constant/turbulenceProperties,
-// newer layouts use constant/momentumTransport
+// OF2412 ESI solves from constant/turbulenceProperties, newer layouts use
+// constant/momentumTransport
 static QString turbulenceDictPath(const QString& caseDir)
 {
-    const QString mt = caseDir + "/constant/momentumTransport";
-    if (QFile::exists(mt)) return mt;
-    return caseDir + "/constant/turbulenceProperties";
+    const QString tp = caseDir + "/constant/turbulenceProperties";
+    if (QFile::exists(tp)) return tp;
+    return caseDir + "/constant/momentumTransport";
 }
 
 QList<ExportResultsDialog::ForceRow> ExportResultsDialog::parseForces() const

@@ -60,9 +60,9 @@ QString RunLogger::startRun(const QString& caseDir, const QString& solver)
     meta["n_steps"]   = 0;
 
     // Physics snapshot tries both OF naming conventions
-    QString mtPath = caseDir + "/constant/momentumTransport";
+    QString mtPath = caseDir + "/constant/turbulenceProperties";
     if (!QFile::exists(mtPath))
-        mtPath = caseDir + "/constant/turbulenceProperties";
+        mtPath = caseDir + "/constant/momentumTransport";
     QString simType = readDictValue(mtPath, "simulationType");
     meta["sim_type"] = simType;
     // nu comes from transportProperties (incompressible), thermophysicalProperties (compressible) or physicalProperties (OF10+)

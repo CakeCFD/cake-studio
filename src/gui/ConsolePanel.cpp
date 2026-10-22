@@ -320,9 +320,9 @@ void ConsolePanel::detectAndCiteSchemes() {
         fvSchemes.close();
     }
 
-    // Detect turbulence model from constant/momentumTransport or turbulenceProperties
-    for (const QString& fname : {caseDir + "/constant/momentumTransport",
-                                  caseDir + "/constant/turbulenceProperties"}) {
+    // Detect turbulence model from constant/turbulenceProperties or momentumTransport
+    for (const QString& fname : {caseDir + "/constant/turbulenceProperties",
+                                  caseDir + "/constant/momentumTransport"}) {
         QFile tf(fname);
         if (!tf.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
         QString txt = tf.readAll();

@@ -367,8 +367,8 @@ void PhysicsPanel::loadFromCase()
         }
     }
 
-    // Detect sim type + model from momentumTransport or turbulenceProperties
-    for (const QString& fname : {"momentumTransport", "turbulenceProperties"}) {
+    // Detect sim type + model from turbulenceProperties, the file v2412 solves from
+    for (const QString& fname : {"turbulenceProperties", "momentumTransport"}) {
         QString simType = readDictValue(m_caseDir + "/constant/" + fname, "simulationType");
         if (simType == "LES") {
             QSignalBlocker b1(m_simTypeCombo), b2(m_solverCombo);
@@ -499,14 +499,6 @@ bool PhysicsPanel::writeMomentumTransport()
 
     QString content;
     QTextStream ts(&content);
-    ts << "FoamFile\n{\n"
-       << "    version     2.0;\n"
-       << "    format      ascii;\n"
-       << "    class       dictionary;\n"
-       << "    location    \"constant\";\n"
-       << "    object      momentumTransport;\n"
-       << "}\n\n";
-
     if (laminar) {
         ts << "simulationType  laminar;\n";
     } else if (isLES()) {
@@ -526,10 +518,20 @@ bool PhysicsPanel::writeMomentumTransport()
            << "    printCoeffs on;\n"
            << "}\n";
     }
+    ts.flush();
 
-    QFile f(m_caseDir + "/constant/momentumTransport");
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
-    QTextStream(&f) << content;
+    // v2412 solves from turbulenceProperties, so both names must carry the same model
+    for (const QString& name : { QString("turbulenceProperties"), QString("momentumTransport") }) {
+        QFile f(m_caseDir + "/constant/" + name);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+        QTextStream(&f) << "FoamFile\n{\n"
+                        << "    version     2.0;\n"
+                        << "    format      ascii;\n"
+                        << "    class       dictionary;\n"
+                        << "    location    \"constant\";\n"
+                        << "    object      " << name << ";\n"
+                        << "}\n\n" << content;
+    }
     return true;
 }
 
@@ -969,7 +971,9 @@ QJsonObject PhysicsPanel::snapshotFromCase(const QString& caseDir)
                                      QRegularExpression(R"(div\(phi,U\)\s+Gauss\s+(\w+))"));
 
     // turbulence model
-    o["turb_model"] = readFirstMatch(caseDir + "/constant/momentumTransport",
+    QString turbDict = caseDir + "/constant/turbulenceProperties";
+    if (!QFile::exists(turbDict)) turbDict = caseDir + "/constant/momentumTransport";
+    o["turb_model"] = readFirstMatch(turbDict,
                                      QRegularExpression(R"(\bmodel\s+(\w+)\s*;)"));
 
     // nu from transportProperties
