@@ -295,7 +295,7 @@ void CitationManager::writeBib(const QString& caseDir) const
             << "  journal = {" << bibEscape(c.journal) << "},\n"
             << "  year    = {" << bibEscape(c.year) << "},\n"
             << "  volume  = {" << bibEscape(c.volume) << "},\n"
-            << "  pages   = {" << c.pages << "},\n"   // "333--359": already BibTeX
+            << "  pages   = {" << c.pages << "},\n"   // "333--359" is already BibTeX
             << "  doi     = {" << c.doi << "}\n"       // verbatim field in biblatex
             << "}\n\n";
     }

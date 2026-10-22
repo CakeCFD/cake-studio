@@ -1,19 +1,3 @@
-#!/usr/bin/env bash
-#
-# CakeCFD build script.
-#
-# Builds the desktop application and the TENO scheme library, checking the
-# environment first so failures are reported in terms of what is missing rather
-# than as a wall of compiler output.
-#
-#   ./build.sh                 build everything
-#   ./build.sh --clean         remove build artefacts first
-#   ./build.sh --debug         build with debug symbols
-#   ./build.sh --app-only      skip the TENO library
-#   ./build.sh --teno-only     skip the application
-#   ./build.sh --verbose       show full compiler output
-#   ./build.sh --jobs N        parallel jobs (default: all cores)
-#
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,7 +41,20 @@ run() {
     "$@" >>"$LOG" 2>&1
 }
 
-usage() { sed -n '3,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
+usage() {
+    cat <<'USAGE'
+Builds the desktop application and the TENO scheme library.
+
+  ./build.sh                 build everything
+  ./build.sh --clean         remove build artefacts first
+  ./build.sh --debug         build with debug symbols
+  ./build.sh --app-only      skip the TENO library
+  ./build.sh --teno-only     skip the application
+  ./build.sh --verbose       show full compiler output
+  ./build.sh --jobs N        parallel jobs (default all cores)
+USAGE
+    exit 0
+}
 
 while (( $# )); do
     case "$1" in
@@ -75,8 +72,7 @@ done
 
 banner() {
     # Block letters only on a real terminal that is wide enough. Redirected
-    # output (CI logs, pipes) and narrow terminals get a plain line instead, so
-    # nothing wraps into unreadable fragments.
+    # output (CI logs, pipes) and narrow terminals get a plain line.
     local cols=0
     [[ -t 1 ]] && cols="$(tput cols 2>/dev/null || echo 0)"
 

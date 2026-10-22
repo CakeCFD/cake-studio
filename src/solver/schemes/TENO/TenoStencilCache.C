@@ -26,17 +26,17 @@ namespace Foam
 defineTypeNameAndDebug(TenoStencilCache, 0);
 
 // Least-squares pseudo-inverse
-// Returns (4 x n) flat matrix so that:
+// Returns a (4 x n) flat matrix so that
 //   u(faceC) ≈ sum_j pinv[0*n+j]*u[j]
 //   ∂u/∂x    ≈ sum_j pinv[1*n+j]*u[j]   etc.
 //
-// Solved in centred form: with dbar = mean(d_j) and M = sum (d_j-dbar)(d_j-dbar)^T,
+// Solved in centred form with dbar = mean(d_j) and M = sum (d_j-dbar)(d_j-dbar)^T,
 //   grad = M^+ sum (d_j-dbar) u_j,   u_face = mean(u) - dbar.grad
 // which is identical to the 4x4 normal equations of the fit u = a + g.d when
-// M has full rank. M^+ is a rank-revealing pseudo-inverse: eigen-directions
+// M has full rank. M^+ is a rank-revealing pseudo-inverse. Eigen-directions
 // whose eigenvalue is below 1e-12 of the largest (degenerate directions such
 // as the empty direction of a 2D case, or a planar stencil) get a zero
-// gradient component instead of a fit to round-off noise. The tolerance is
+// gradient component so round-off noise is never fitted. The tolerance is
 // relative, so it is independent of the mesh length scale.
 namespace
 {
@@ -132,15 +132,15 @@ scalarField TenoStencilCache::computeLSQ(
         for (int k = 0; k < 3; ++k)
         {
             const scalar lam = M[k][k];
-            if (lam <= tol) continue;   // degenerate direction: zero gradient
+            if (lam <= tol) continue;   // degenerate direction gets zero gradient
             for (int r = 0; r < 3; ++r)
                 for (int c = 0; c < 3; ++c)
                     Minv[r][c] += V[r][k]*V[c][k]/lam;
         }
     }
 
-    // Rows 1..3: gradient weights w_j = M^+ (d_j - dbar)
-    // Row 0:     face value weights 1/n - dbar.w_j
+    // Rows 1..3 hold gradient weights w_j = M^+ (d_j - dbar)
+    // Row 0 holds face value weights 1/n - dbar.w_j
     for (label j = 0; j < n; ++j)
     {
         const vector e = cc[stencil[j]] - faceC - dbar;
@@ -169,7 +169,7 @@ void TenoStencilCache::buildStencils(const fvMesh& mesh)
 
     label nFaces = own.size();
 
-    // Full rebuild: discard all previous entries. resize() alone would keep
+    // Full rebuild discards all previous entries. resize() alone would keep
     // the old stencils, so the appends below would duplicate them on every
     // movePoints() and leave stale cell labels after updateMesh().
     faceData_.clear();
@@ -182,28 +182,27 @@ void TenoStencilCache::buildStencils(const fvMesh& mesh)
         auto& fd = faceData_[facei];
         fd.faceCentre = fC;
 
-        // S_K: wide central stencil (1-ring around both owner and neighbour)
+        // S_K is the wide central stencil (1-ring around both owner and neighbour)
         labelHashSet vK;
         auto addK = [&](label c){ if(vK.insert(c)) fd.stencilK.append(c); };
         addK(o); addK(n);
         for (label nb : cn[o]) addK(nb);
         for (label nb : cn[n]) addK(nb);
 
-        // S_0: owner-side (owner + owner's face-neighbours)
+        // S_0 is owner-side (owner + owner's face-neighbours)
         labelHashSet v0;
         auto add0 = [&](label c){ if(v0.insert(c)) fd.stencil0.append(c); };
         add0(o);
         for (label nb : cn[o]) add0(nb);
 
-        // S_1: neighbour-side (neighbour + neighbour's face-neighbours)
+        // S_1 is neighbour-side (neighbour + neighbour's face-neighbours)
         labelHashSet v1;
         auto add1 = [&](label c){ if(v1.insert(c)) fd.stencil1.append(c); };
         add1(n);
         for (label nb : cn[n]) add1(nb);
 
-        // S_2: owner 2nd-ring - used as 4th TENO6 candidate
-        // Extends stencil0 by one more ring: neighbours-of-neighbours of owner.
-        // This gives a strongly upstream-biased stencil distinct from S_0.
+        // S_2 is the owner 2nd ring, used as the 4th TENO6 candidate
+        // It extends stencil0 by the owner's neighbours-of-neighbours.
         labelHashSet v2(v0);  // start from S_0 cells
         auto add2 = [&](label c){ if(v2.insert(c)) fd.stencil2.append(c); };
         // Add already-in-stencil0 cells first (preserve ordering)

@@ -1,21 +1,3 @@
-#!/usr/bin/env python3
-"""
-VC-001: Spatial order-of-accuracy verification by linear advection of a smooth profile.
-
-Advects T(x,0) = sin(2*pi*x) once around a periodic unit domain at u = 1 m/s, so the
-exact solution at t = 1 s is the initial condition. Pure advection: the diffusivity is
-zero, so the only spatial discretisation exercised is div(phi,T).
-
-Temporal error is kept below spatial error by scaling the time step as dt ~ dx^2.5
-against a second-order time scheme, so the measured slope reflects the convection
-scheme rather than the time integration. Norms are grid-normalised so they are
-comparable across refinement levels.
-
-Usage:
-    source /usr/lib/openfoam/openfoam2412/etc/bashrc
-    python3 validation/tools/advection_order.py
-"""
-
 import csv
 import math
 import os
@@ -51,7 +33,7 @@ def head():
 
 
 def write_blockmesh(case: Path, n: int):
-    # 1-D strip: n cells in x, one cell in y and z, front/back and top/bottom empty.
+    # 1-D strip with n cells in x, one cell in y and z, front/back and top/bottom empty.
     (case / "system").mkdir(parents=True, exist_ok=True)
     (case / "system" / "blockMeshDict").write_text(
         head() + "    class dictionary; object blockMeshDict;\n}\n\n"
@@ -75,7 +57,7 @@ def write_fields(case: Path, n: int):
     zero = case / "0"
     zero.mkdir(parents=True, exist_ok=True)
 
-    # T is set directly on cell centres rather than via setFields, so the initial
+    # T is set directly on cell centres so the initial
     # condition carries no additional discretisation error of its own.
     xs = [(i + 0.5) / n for i in range(n)]
     vals = "\n".join(f"{math.sin(2.0 * math.pi * x):.16e}" for x in xs)
@@ -101,7 +83,7 @@ def write_fields(case: Path, n: int):
     )
     const = case / "constant"
     const.mkdir(parents=True, exist_ok=True)
-    # Zero diffusivity: pure advection, so div(phi,T) is the only term under test.
+    # Zero diffusivity gives pure advection, so div(phi,T) is the only term under test.
     (const / "transportProperties").write_text(
         head() + "    class dictionary; object transportProperties;\n}\n\n"
         "DT [0 2 -1 0 0 0 0] 0;\n"

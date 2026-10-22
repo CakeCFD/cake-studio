@@ -118,7 +118,7 @@ CaseTreePanel::CaseTreePanel(QWidget* parent) : QWidget(parent)
     m_tree->setStyleSheet("QTreeWidget { font-size: 11px; border: none; }"
                           "QTreeWidget::item { padding: 2px 0; }"
                           "QTreeWidget::item:hover { background: rgba(255,255,255,0.05); }");
-    // Qt delivers drag events to the tree's internal viewport child, not to this widget.
+    // Qt delivers drag events to the tree's internal viewport child.
     // Install an event filter on it so drops work when the user drags files onto the panel.
     m_tree->viewport()->setAcceptDrops(true);
     m_tree->viewport()->installEventFilter(this);
@@ -153,7 +153,7 @@ void CaseTreePanel::setCaseDir(const QString& dir)
 
         m_refreshTimer = new QTimer(this);
         m_refreshTimer->setSingleShot(true);
-        m_refreshTimer->setInterval(600);   // debounce: wait 600ms after last event
+        m_refreshTimer->setInterval(600);   // debounce 600ms after the last event
         connect(m_refreshTimer, &QTimer::timeout, this, &CaseTreePanel::refresh);
 
         connect(m_watcher, &QFileSystemWatcher::directoryChanged,
@@ -264,7 +264,7 @@ void CaseTreePanel::populate()
         bool ok; double v = e.toDouble(&ok);
         if (ok && v > 0) m_timeSteps << e;
     }
-    // Numeric order (0.5 < 2 < 10): indices must match ViewportWidget's time list
+    // Numeric order (0.5 < 2 < 10) so indices match ViewportWidget's time list
     std::sort(m_timeSteps.begin(), m_timeSteps.end(),
               [](const QString& a, const QString& b) { return a.toDouble() < b.toDouble(); });
     if (!m_timeSteps.isEmpty()) {
@@ -414,7 +414,7 @@ void CaseTreePanel::onContextMenu(const QPoint& pos)
     else if (t == TypeSection) {
         int sectionHint = item->data(0, RoleStepIndex).toInt();
         QString label = item->text(0);
-        // Placeholder child "(empty: ...)" inside a section: use parent's label
+        // Placeholder child "(empty: ...)" inside a section uses the parent's label
         if (label.startsWith("(") && item->parent())
             label = item->parent()->text(0);
 
@@ -491,7 +491,7 @@ void CaseTreePanel::openFileEditor(const QString& path)
     pathLabel->setStyleSheet("color: #666; font-size: 10px;");
     layout->addWidget(pathLabel);
 
-    // Button row: Save (to case file) | Save Globally (to user templates) | Close
+    // Button row with Save (to case file), Save Globally (to user templates) and Close
     auto* btnRow       = new QHBoxLayout;
     auto* btnSave      = new QPushButton("Save", dlg);
     btnSave->setToolTip("Write back to the case file");
@@ -657,7 +657,7 @@ void CaseTreePanel::dropEvent(QDropEvent* e)
             !src.endsWith(".obj", Qt::CaseInsensitive)) continue;
 
         QString dest = m_caseDir + "/constant/triSurface/" + QFileInfo(src).fileName();
-        // Dropping a file that already lives in triSurface: removing dest would delete the source
+        // A file that already lives in triSurface would be deleted by removing dest
         if (QFileInfo(src).canonicalFilePath() != QFileInfo(dest).canonicalFilePath()) {
             if (QFile::exists(dest)) QFile::remove(dest);
             QFile::copy(src, dest);

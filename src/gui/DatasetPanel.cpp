@@ -363,7 +363,7 @@ void DatasetPanel::buildUI()
     fieldRow->addWidget(m_fieldCombo, 1);
     dbL->addLayout(fieldRow);
 
-    // Time: single vs range
+    // Single time or range
     auto* tmodeRow = new QHBoxLayout;
     m_rbSingle = new QRadioButton("Single time:");
     m_rbRange  = new QRadioButton("Time range:");
@@ -469,14 +469,14 @@ void DatasetPanel::buildUI()
     m_exportRansBtn->setEnabled(false);
     m_copyPyBtn->setEnabled(false);
 
-    // Row 1: primary actions
+    // First row holds the primary actions
     auto* qBtnRow = new QHBoxLayout;
     qBtnRow->addWidget(m_queryBtn);
     qBtnRow->addWidget(m_cancelBtn);
     qBtnRow->addStretch();
     qL->addLayout(qBtnRow);
 
-    // Row 2: secondary actions: each button expands equally with panel width
+    // Second row holds secondary actions that share the panel width
     auto* qBtnRow2 = new QHBoxLayout;
     qBtnRow2->setSpacing(4);
     for (auto* btn : {m_viewReqBtn, m_exportBtn, m_exportRansBtn, m_copyPyBtn}) {
@@ -1031,7 +1031,7 @@ void DatasetPanel::onAutowrap()
     bool doMod = rbMod->isChecked();
     int n = pts.size() / 3;
 
-    // For linear scale: compute source bbox
+    // Linear scale needs the source bbox
     double srcXMin=pts[0],srcXMax=pts[0],srcYMin=pts[1],srcYMax=pts[1],srcZMin=pts[2],srcZMax=pts[2];
     if (!doMod) {
         for (int i=0;i<n;++i){
@@ -1163,7 +1163,7 @@ bool DatasetPanel::writeBoundaryData(const QString& caseDir, const QString& patc
         QTextStream o(&f);
         o << "FoamFile\n{\n    version 2.0; format ascii;\n"
           << "    class vectorField; object points;\n}\n" << nPts << "\n(\n";
-        // 15 significant digits: closely spaced face centres must stay
+        // 15 significant digits keep closely spaced face centres
         // distinct or timeVaryingMapped's triangulation degenerates
         for (int i = 0; i < nPts; ++i)
             o << QString("  (%1 %2 %3)\n")
@@ -1537,7 +1537,7 @@ void DatasetPanel::onViewRequest()
     hint->setWordWrap(true);
     vl->addWidget(hint);
 
-    // Button row: Save (pick location) | Save Globally (to ~/.config/CakeCFD/scripts/) | Close
+    // Button row with Save (pick location), Save Globally (to ~/.config/CakeCFD/scripts/) and Close
     auto* btnRow    = new QHBoxLayout;
     auto* btnSave   = new QPushButton("Save", dlg);
     btnSave->setToolTip("Save the current tab's script to a location you choose");

@@ -65,7 +65,7 @@ ApiFormatDialog::ApiFormatDialog(QSettings& settings, QWidget* parent)
     auto* tabs = new QTabWidget;
     root->addWidget(tabs);
 
-    // Tab 1: Format & Test
+    // Format & Test tab
     auto* fmtTab = new QWidget;
     auto* fmtTabL = new QVBoxLayout(fmtTab);
 
@@ -138,7 +138,7 @@ ApiFormatDialog::ApiFormatDialog(QSettings& settings, QWidget* parent)
 
     tabs->addTab(fmtTab, "Format & Test");
 
-    // Tab 2: Citation
+    // Citation tab
     auto* citeTab  = new QWidget;
     auto* citeTabL = new QVBoxLayout(citeTab);
 

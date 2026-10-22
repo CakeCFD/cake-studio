@@ -1,6 +1,3 @@
-// CakeStudio Setup: classic wizard that installs WSL2 and Ubuntu if needed, then runs install.sh there.
-// Flags: --resume, --silent [log], --uninstall [--silent], --screenshots <dir>. Built by build-setup.cmd.
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -103,7 +100,7 @@ static class Wsl
             p.BeginErrorReadLine();
             if (stdin != null)
             {
-                // bash reads the script from stdin: LF endings, no BOM
+                // bash reads the script from stdin, so it needs LF endings and no BOM
                 var w = new StreamWriter(p.StandardInput.BaseStream, new UTF8Encoding(false));
                 w.NewLine = "\n";
                 w.Write(stdin.Replace("\r\n", "\n"));
@@ -295,7 +292,7 @@ class SetupForm : Form
         return b;
     }
 
-    // Welcome and Finish: banner on the left, white text panel on the right
+    // Welcome and Finish pages have the banner on the left and a white text panel on the right
     Panel BannerPage(PageId id, string title, out Panel body)
     {
         var p = new Panel { Bounds = new Rectangle(0, 0, W, TopH), BackColor = Color.White, Visible = false };
@@ -320,7 +317,7 @@ class SetupForm : Form
         return p;
     }
 
-    // Inner pages: white header with title, subtitle and logo, grey body
+    // Inner pages have a white header with title, subtitle and logo over a grey body
     Panel InnerPage(PageId id, string title, string subtitle)
     {
         var p = new Panel { Bounds = new Rectangle(0, 0, W, TopH), Visible = false };
@@ -595,7 +592,7 @@ class SetupForm : Form
 
     // Installation (background thread)
 
-    // Silent mode writes to this log instead of the window
+    // Silent mode writes progress to this log
     TextWriter silentLog;
 
     void Log(string line)

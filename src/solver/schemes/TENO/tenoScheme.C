@@ -28,8 +28,8 @@ namespace Foam
 {
 
 // Per-component smoothness indicator
-// Fixes the original magSqr() bug: for vector/tensor fields this now correctly
-// operates on each scalar component independently.
+// Fixes the original magSqr() bug, so vector/tensor fields now correctly
+// operate on each scalar component independently.
 template<class Type>
 scalar tenoScheme<Type>::betaIndicatorCmpt(
     const GeometricField<Type, fvPatchField, volMesh>& vf,
@@ -51,10 +51,10 @@ scalar tenoScheme<Type>::betaIndicatorCmpt(
         gz   += lsq[3*n + j] * uj;
     }
 
-    // First-order smoothness: |∇u|²
+    // First-order smoothness |∇u|²
     scalar beta1 = gx*gx + gy*gy + gz*gz;
 
-    // Second-order smoothness: residual variance of the linear fit
+    // Second-order smoothness from the residual variance of the linear fit
     const vectorField& cc = this->mesh().cellCentres();
     scalar beta2 = 0.0;
     for (label j = 0; j < n; ++j)
@@ -121,11 +121,11 @@ tenoScheme<Type>::correction(
             const scalar b1 = betaIndicatorCmpt(vf, cmpt, fd.stencil1, fd.lsq1, fC);
 
             // Global smoothness discriminator τ = max pairwise beta spread (proxy for Fu τ5)
-            // Using max spread rather than |β0-β2| since stencil ordering isn't fixed in 3D.
+            // Max spread is used because stencil ordering isn't fixed in 3D.
             const scalar tau = max(mag(bK - b0), max(mag(b0 - b1), mag(bK - b1))) + eps_;
 
-            // Scale separation (Fu 2016 Eq.23): χ_k = (1 + τ/(β_k+ε))^q
-            // Using 1+τ/β (not 1/β^q) guarantees χ_k ≥ 1 - prevents all-zero collapse
+            // Scale separation (Fu 2016 Eq.23) χ_k = (1 + τ/(β_k+ε))^q
+            // 1+τ/β guarantees χ_k ≥ 1, which prevents all-zero collapse
             // that would set face values to 0 and blow up pressure-velocity coupling.
             const scalar gK = Foam::pow(1.0 + tau/(eps_ + bK), scalar(q_));
             const scalar g0 = Foam::pow(1.0 + tau/(eps_ + b0), scalar(q_));
@@ -142,7 +142,7 @@ tenoScheme<Type>::correction(
             const scalar delta0 = (g0/gS > C_T_loc) ? 1.0 : 0.0;
             const scalar delta1 = (g1/gS > C_T_loc) ? 1.0 : 0.0;
 
-            // Two-level reconstruction (Fu 2016 Eq.26-28):
+            // Two-level reconstruction (Fu 2016 Eq.26-28)
             //   Wide stencil K smooth → fall back to conservative linear (zero correction)
             //     so the SIMPLE pressure-velocity coupling stays stable over many iterations.
             //     LSQ(K) ≠ mesh-weighted-linear even in smooth regions, and the accumulated
@@ -152,7 +152,7 @@ tenoScheme<Type>::correction(
             scalar tvCmpt;
             if (deltaK > 0.5)
             {
-                // Smooth flow: use the mesh-weighted linear value - correction is zero,
+                // Smooth flow uses the mesh-weighted linear value with zero correction,
                 // scheme is conservative, SIMPLE stays stable.
                 tvCmpt = component(tlinear.ref()[facei], cmpt);
             }
@@ -163,7 +163,7 @@ tenoScheme<Type>::correction(
                 const scalar dS = delta0 + delta1;
                 scalar raw = (dS < SMALL) ? r0 : (delta0/dS)*r0 + (delta1/dS)*r1;
 
-                // Clamp to owner-neighbour range: prevents LSQ extrapolation blow-up.
+                // Clamp to the owner-neighbour range to prevent LSQ extrapolation blow-up.
                 const label o = mesh.owner()[facei];
                 const label n = mesh.neighbour()[facei];
                 const scalar vO = component(vf[o], cmpt);

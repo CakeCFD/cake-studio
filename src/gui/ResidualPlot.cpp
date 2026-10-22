@@ -233,7 +233,7 @@ void ResidualPlot::drawLegend(QPainter& p, const QRectF& plot) const
     int boxW = swatchW + 6 + maxW + pad * 2;
     int boxH = n * lineH + pad;
 
-    // Position: top-right inside plot
+    // Top-right inside the plot
     double bx = plot.right() - boxW - 6;
     double by = plot.top() + 6;
 

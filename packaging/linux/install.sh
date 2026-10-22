@@ -1,6 +1,3 @@
-#!/usr/bin/env bash
-# CakeStudio installer for Ubuntu 24.04, native or under WSL2. Run with --help for options.
-# Lines starting with @@ are progress markers read by the Windows setup wizard.
 set -uo pipefail
 
 REPO="CakeCFD/cake-studio"
@@ -50,7 +47,7 @@ is_wsl() { grep -qi microsoft /proc/version 2>/dev/null; }
 check_platform() {
     [ "$(uname -m)" = "x86_64" ] || fail "CakeStudio needs a 64-bit x86 machine (found $(uname -m))."
     [ -r /etc/os-release ] || fail "Cannot read /etc/os-release."
-    # Subshell: os-release defines VERSION, which would clobber ours
+    # Subshell because os-release defines VERSION, which would clobber ours
     local os; os="$(. /etc/os-release; echo "${ID:-}|${VERSION_ID:-}|${PRETTY_NAME:-unknown}")"
     if [ "${os%%|*}" != "ubuntu" ] || [ "$(echo "$os" | cut -d'|' -f2)" != "24.04" ]; then
         fail "The prebuilt package needs Ubuntu 24.04 (found ${os##*|}). Build from source instead: https://github.com/${REPO}"
@@ -102,7 +99,7 @@ latest_version() {
 
 install_app() {
     [ "$(id -u)" -ne 0 ] || fail "Install CakeStudio as your normal user, not root."
-    # Global, not local: the EXIT trap runs after this function has returned
+    # Global because the EXIT trap runs after this function has returned
     TMP_DIR="$(mktemp -d)"
     trap 'rm -rf "$TMP_DIR"' EXIT
     local tmp="$TMP_DIR"

@@ -61,7 +61,7 @@ public:
     void queryField(const QString& dataset, const QString& field,
                     double time, const QVector<double>& points);
 
-    // Multi-time range: fires sequential requests
+    // Multi-time range fires sequential requests
     void queryFieldRange(const QString& dataset, const QString& field,
                          const QVector<double>& times,
                          const QVector<double>& points);
@@ -71,8 +71,8 @@ public:
     void cancelRange();
 
     // Custom REST/JSON response parser shared with ApiFormatDialog's Test.
-    // path: dot-separated, numeric segments index arrays ("data.0.items").
-    // keys: per-item component keys, each may be dotted/indexed ("vel.x").
+    // path is dot-separated and numeric segments index arrays ("data.0.items").
+    // keys are per-item component keys, each may be dotted or indexed ("vel.x").
     static QVector<double> parseCustomJson(const QByteArray& raw, const QString& path,
                                            const QStringList& keys,
                                            QString* errOut = nullptr);

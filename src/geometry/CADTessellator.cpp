@@ -70,7 +70,7 @@ vtkSmartPointer<vtkPolyData> CADTessellator::tessellate(
                 (xmax-xmin)*(xmax-xmin) +
                 (ymax-ymin)*(ymax-ymin) +
                 (zmax-zmin)*(zmax-zmin));
-            linDef = diag * params.linearDeflection; // fraction of bbox diagonal: coarse enough for snappyHexMesh STL
+            linDef = diag * params.linearDeflection; // fraction of bbox diagonal, coarse enough for snappyHexMesh STL
         }
     }
 

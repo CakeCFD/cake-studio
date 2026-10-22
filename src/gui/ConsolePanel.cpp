@@ -161,7 +161,7 @@ void ConsolePanel::setupUI() {
     }
     m_solverBanner->setVisible(false);
 
-    // Splitter: plot on top, text output below
+    // Splitter with the plot on top and text output below
     auto* splitter = new QSplitter(Qt::Vertical);
 
     m_plot = new ResidualPlot();
@@ -203,7 +203,7 @@ void ConsolePanel::setupUI() {
         btn->setFixedWidth(110);
         ThemeEngine::setRole(btn, role);
         connect(btn, &QPushButton::clicked, this, [this, keywords, btn]() {
-            // Capture full blocks: from the matching line until the next blank line,
+            // Capture from the matching line to the next blank line
             // so multi-line FOAM errors are copied in their entirety.
             QStringList lines = m_output->toPlainText().split('\n');
             QStringList blocks;
@@ -366,23 +366,23 @@ void ConsolePanel::onSolverFinished(int exitCode) {
             RunLogger::finishRun(m_currentRunDir, caseDir, true);
             appendLine(QString("[Run] Saved: %1").arg(QFileInfo(m_currentRunDir).fileName()));
         } else if (stopped) {
-            // User interrupted: keep the run, flagged as stopped
+            // User interrupted, so keep the run flagged as stopped
             RunLogger::finishRun(m_currentRunDir, caseDir, false, true);
             appendLine(QString("[Run] Saved (stopped): %1").arg(QFileInfo(m_currentRunDir).fileName()));
         } else if (producedOutput) {
-            // Diverged/crashed mid-run: keep it so the failure can be inspected
+            // Diverged or crashed mid-run, so keep it for inspection
             RunLogger::finishRun(m_currentRunDir, caseDir, false);
             appendLine(QString("[Run] Solver exited with errors: saved as %1 (not converged).")
                            .arg(QFileInfo(m_currentRunDir).fileName()));
         } else {
-            // Nothing written: discard the run log, don't pollute run history
+            // Nothing written, so discard the run log to keep the history clean
             QDir(m_currentRunDir).removeRecursively();
             appendLine("[Run] Solver exited with errors: run not saved.");
         }
         m_currentRunDir.clear();
     }
 
-    // Always try to show whatever time steps exist: useful for failed/diverged runs too.
+    // Show whatever time steps exist, which helps with failed runs too
     if (!caseDir.isEmpty()) {
         QDir d(caseDir);
         static QRegularExpression numRe("^\\d+(\\.\\d+)?$");
@@ -472,7 +472,7 @@ void ConsolePanel::onRunClicked() {
             SolverConfigDialog dlg(solver, caseDir, this);
             dlg.exec();
             emit caseFilesChanged(caseDir);
-            // Re-verify: if Write was done, application is now updated to solver
+            // Re-verify, since Write updates the application to the solver
             QString newApp;
             QFile ctl2(caseDir + "/system/controlDict");
             if (ctl2.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -487,7 +487,7 @@ void ConsolePanel::onRunClicked() {
         }
     }
 
-    // Compressible solvers: if SolverConfigDialog hasn't been run yet, prompt the user
+    // Compressible solvers prompt the user when SolverConfigDialog hasn't run yet
     const bool isCompressible = (solver == "rhoSimpleFoam"     || solver == "rhoPimpleFoam"
                                   || solver == "rhoCentralFoam"
                                   || solver == "buoyantSimpleFoam" || solver == "buoyantPimpleFoam");
@@ -502,7 +502,7 @@ void ConsolePanel::onRunClicked() {
         emit caseFilesChanged(caseDir);
     }
 
-    // Incompressible solvers: restore kinematic p and incompressible fvSchemes if case was compressible
+    // Incompressible solvers restore kinematic p and fvSchemes on a previously compressible case
     const bool isIncompressible = (solver == "simpleFoam" || solver == "icoFoam"
                                     || solver == "pimpleFoam" || solver == "pisoFoam");
     if (isIncompressible) {
@@ -623,7 +623,7 @@ void ConsolePanel::onRunClicked() {
     if (useGpu) appendLine(QString("[Run] GPU solver enabled (VRAM limit: %1%).").arg(qRound(vramFraction * 100)));
     m_runner->run(solver, caseDir, {}, useGpu, vramFraction);
     if (!m_runner->isRunning() && !m_currentRunDir.isEmpty()) {
-        // Failed to start: no solverFinished will follow, and there is nothing to keep
+        // Failed to start, so no solverFinished follows and there is nothing to keep
         QDir(m_currentRunDir).removeRecursively();
         m_currentRunDir.clear();
     }
@@ -643,7 +643,7 @@ void ConsolePanel::execCommand(const QString& cmd)
     m_cmdEdit->clear();
 
     QString caseDir = m_casePathEdit->text().trimmed();
-    appendLine("$ " + cmd);  // plain text: the output pane is a QPlainTextEdit
+    appendLine("$ " + cmd);  // plain text because the output pane is a QPlainTextEdit
 
     if (m_cmdProcess && m_cmdProcess->state() != QProcess::NotRunning) {
         appendLine(QString("[busy: previous command still running]"));

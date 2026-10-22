@@ -216,7 +216,7 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
                 "For external aerodynamics, TENO + RANS (simpleFoam) gives the\n"
                 "accuracy benefit of high-order convection at a practical cost.");
         }
-        // Re-enable LES option regardless (warning-only, not blocked)
+        // Re-enable the LES option regardless, it only warns
         auto* model = qobject_cast<QStandardItemModel*>(m_simTypeCombo->model());
         if (model) {
             auto* lesItem = model->item(1);
@@ -669,7 +669,7 @@ bool PhysicsPanel::writeDivScheme()
         return true;
     }
 
-    // Patch existing file: replace div(phi,U) line and libs entry
+    // Patch the existing file's div(phi,U) line and libs entry
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
     QString txt = f.readAll();
@@ -693,7 +693,7 @@ bool PhysicsPanel::writeDivScheme()
     QTextStream(&f) << txt;
     f.close();
 
-    // libs must live in controlDict (not fvSchemes) to be loaded by OF 2412.
+    // OF 2412 only loads libs listed in controlDict.
     bool isTeno = (scheme == "teno" || scheme == "teno6");
     QString cdPath = m_caseDir + "/system/controlDict";
     QFile cd(cdPath);
@@ -732,10 +732,8 @@ bool PhysicsPanel::writeControlDictTimeSettings()
     bool steady = !solver.contains("pimple", Qt::CaseInsensitive);
     bool teno   = (scheme == "teno" || scheme == "teno6");
 
-    // Determine time-stepping parameters
-    // RANS: pseudo-time, no CFL control needed
-    // LES + linearUpwind: standard Courant control, maxCo 0.5
-    // LES + TENO5/6: tighter Courant needed, maxCo 0.4 (lower numerical dissipation)
+    // Time stepping. RANS uses pseudo-time, LES + linearUpwind maxCo 0.5,
+    // LES + TENO5/6 maxCo 0.4 for its lower numerical dissipation
     QString deltaT, endTime, writeControl, writeInterval, adjustTS, maxCo, maxDeltaT;
 
     if (steady) {
@@ -747,7 +745,7 @@ bool PhysicsPanel::writeControlDictTimeSettings()
         writeControl  = "timeStep";
         writeInterval = "100";
     } else if (teno) {
-        // LES + TENO5 or TENO6: low dissipation → tight CFL
+        // LES + TENO5 or TENO6 has low dissipation → tight CFL
         deltaT        = "1e-5";
         endTime       = "0.5";
         adjustTS      = "yes";
@@ -756,7 +754,7 @@ bool PhysicsPanel::writeControlDictTimeSettings()
         writeControl  = "adjustableRunTime";
         writeInterval = "0.05";
     } else {
-        // LES + linearUpwind: standard transient
+        // LES + linearUpwind is a standard transient
         deltaT        = "1e-4";
         endTime       = "0.5";
         adjustTS      = "yes";
@@ -792,7 +790,7 @@ bool PhysicsPanel::writeControlDictTimeSettings()
     QTextStream(&f) << txt;
     f.close();
 
-    // Patch fvSchemes: ddtScheme + gradient scheme.
+    // Patch the fvSchemes ddtScheme and gradient scheme.
     // Use line-level replacement so we never accidentally touch other one-liner blocks.
     QString schemesPath = m_caseDir + "/system/fvSchemes";
     QFile sf(schemesPath);
@@ -800,7 +798,7 @@ bool PhysicsPanel::writeControlDictTimeSettings()
         QString stxt = sf.readAll();
         sf.close();
 
-        // ddtSchemes: `backward` for LES, `steadyState` for RANS
+        // ddtSchemes is backward for LES and steadyState for RANS
         QString ddt = steady ? "steadyState" : "backward";
         int pos = stxt.indexOf("ddtSchemes");
         if (pos >= 0) {
@@ -809,7 +807,7 @@ bool PhysicsPanel::writeControlDictTimeSettings()
             stxt.replace(pos, lineEnd - pos, "ddtSchemes      { default " + ddt + "; }");
         }
 
-        // gradSchemes: TENO needs cellLimited to prevent gradient overshoots;
+        // TENO needs cellLimited gradSchemes to prevent gradient overshoots;
         // linearUpwind is stable with plain Gauss linear
         QString grad = teno ? "cellLimited Gauss linear 1" : "Gauss linear";
         pos = stxt.indexOf("gradSchemes");
@@ -823,7 +821,7 @@ bool PhysicsPanel::writeControlDictTimeSettings()
             QTextStream(&sf) << stxt;
     }
 
-    // Patch fvSolution relaxation: TENO needs tighter factors than linearUpwind
+    // Patch fvSolution relaxation since TENO needs tighter factors than linearUpwind
     QString solPath = m_caseDir + "/system/fvSolution";
     QFile solF(solPath);
     if (solF.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -848,7 +846,7 @@ bool PhysicsPanel::writeControlDictTimeSettings()
 }
 
 // Ensures UFinal, pFinal, and turbulence Final entries exist in fvSolution/solvers.
-// Patches the live file in-place: safe to call on old cases that predate the template fix.
+// Patches the live file in place, safe on old cases that predate the template fix.
 static void patchFvSolutionFinals(const QString& caseDir)
 {
     QString path = caseDir + "/system/fvSolution";
@@ -859,7 +857,7 @@ static void patchFvSolutionFinals(const QString& caseDir)
 
     bool changed = false;
 
-    // Helper: insert `insertion` immediately after the closing `}` of the block that starts with `key`
+    // Inserts insertion right after the closing } of the block that starts with key
     auto insertAfterBlock = [&](const QString& key, const QString& insertion) {
         QRegularExpression re("\\b" + key + "\\s*\\{[^}]+\\}");
         auto m = re.match(txt);
@@ -876,7 +874,7 @@ static void patchFvSolutionFinals(const QString& caseDir)
         insertAfterBlock("p", "    pFinal  { $p; relTol 0; }");
 
     if (!txt.contains("kFinal")) {
-        // Turbulence finals: append after the last solver block before the closing }
+        // Append turbulence finals after the last solver block before the closing }
         int closingBrace = txt.lastIndexOf(QRegularExpression("\\}\\s*\\}"));
         if (closingBrace > 0) {
             txt.insert(closingBrace,

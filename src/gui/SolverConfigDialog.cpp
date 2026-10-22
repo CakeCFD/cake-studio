@@ -93,7 +93,7 @@ SolverConfigDialog::SolverConfigDialog(const QString& solver,
         m_divScheme->addItem("TENO6",         QString("teno6"));
         if (m_isCentral) {
             // rhoCentralFoam uses Kurganov-Tadmor reconstruction (reconstruct(U) vanLeerV),
-            // not div(phi,U) - div scheme selection has no effect
+            // so the div scheme selection has no effect
             m_divScheme->setEnabled(false);
             m_divScheme->setCurrentIndex(0);
             m_divScheme->setToolTip("rhoCentralFoam uses density-based flux reconstruction "
@@ -114,7 +114,7 @@ SolverConfigDialog::SolverConfigDialog(const QString& solver,
         }
         form->addRow("Div scheme:", m_divScheme);
 
-        // Turbulence type (RANS / LES) - not for laminar or steady buoyant solvers.
+        // Turbulence type (RANS / LES), hidden for laminar and steady buoyant solvers.
         // rhoCentralFoam supports RANS (kOmegaSST/SA) and LES at high Mach.
         // buoyantPimpleFoam supports LES; buoyantSimpleFoam is steady and doesn't.
         const bool isSteadyBuoyant = (m_solver == "buoyantSimpleFoam");
@@ -442,7 +442,7 @@ void SolverConfigDialog::onApply()
 
 void SolverConfigDialog::patchControlDictTransient()
 {
-    // Steady-state: reset to deltaT 1 / adjustTimeStep no in case a previous
+    // Steady state resets to deltaT 1 and adjustTimeStep no in case a previous
     // transient run left behind a tiny deltaT or adjustTimeStep yes
     if (!m_isTransient && !m_isCentral) {
         QString ctlPath = m_caseDir + "/system/controlDict";
@@ -496,7 +496,7 @@ void SolverConfigDialog::patchControlDictTransient()
 
     double dtSafe;
     if (m_isCentral) {
-        // rhoCentralFoam: explicit density-based - stability governed by acoustic CFL
+        // rhoCentralFoam is explicit and density-based, so acoustic CFL governs stability
         // dt = CFL * dx / (U + a),  a≈347 m/s for air at 300K, dx≈0.01m
         const double refT  = (m_refTemp ? m_refTemp->value() : 300.0);
         const double molW  = m_molWeight ? m_molWeight->value() : 28.97;
@@ -506,7 +506,7 @@ void SolverConfigDialog::patchControlDictTransient()
         dtSafe = 0.5 * 0.01 / (vel + a);   // CFL 0.5, dx ≈ 0.01 m
         dtSafe = std::max(dtSafe, 1e-7);
     } else {
-        // PIMPLE/PISO: convective CFL, dx ≈ 0.01m
+        // PIMPLE/PISO use the convective CFL, dx ≈ 0.01m
         dtSafe = std::max(1e-5, 0.5 * 0.01 / std::max(vel, 1.0));
     }
 
@@ -577,7 +577,7 @@ void SolverConfigDialog::patchControlDictLibs()
 
     // libtenoScheme.so is the library that registers the teno and teno6 schemes.
     // The old libTENOScheme.so is still matched here so cases written by earlier
-    // versions have their stale entry cleaned up rather than left behind.
+    // versions have their stale entry cleaned up.
     const bool hasLib = txt.contains("libtenoScheme") || txt.contains("libTENOScheme");
     if (needsTeno && !hasLib)
         txt += "\nlibs (\"libtenoScheme.so\");\n";
@@ -691,7 +691,7 @@ void SolverConfigDialog::writeThermophysicalProperties()
                          .arg(m_mu->value(), 0, 'g', 8).arg(m_pr->value(), 0, 'f', 6);
     }
 
-    // janaf reads 7-coefficient NASA polynomials, not Cp/Hf. The coefficients
+    // janaf reads 7-coefficient NASA polynomials. The coefficients
     // below are the standard air set used by the OpenFOAM tutorials.
     QString thermoBlock;
     if (m_thermo->currentText() == "janaf") {
@@ -734,7 +734,7 @@ void SolverConfigDialog::writeThermophysicalProperties()
                   return QString("pRef %1;").arg((int)m_refPressure->value());
               if (eos == "rhoConst")
                   return "rho 1.225;";
-              return "";   // perfectGas: no params needed
+              return "";   // perfectGas needs no params
          }() << " }\n"
       << thermoBlock
       << transportBlock
@@ -757,7 +757,7 @@ void SolverConfigDialog::writeFvSchemes()
                              : (divSch == "teno6") ? "Gauss teno6"
                              : "Gauss linearUpwind grad(U)";
 
-    // rhoCentralFoam: density-based explicit solver; reconstruct(phi,X) not div(phi,X)
+    // rhoCentralFoam is density-based and explicit, it uses reconstruct(phi,X)
     if (m_isCentral) {
         o << "FoamFile\n{ version 2.0; format ascii; class dictionary; object fvSchemes; }\n\n"
           << "ddtSchemes      { default Euler; }\n\n"
@@ -783,7 +783,7 @@ void SolverConfigDialog::writeFvSchemes()
         return;
     }
 
-    // buoyantSimpleFoam / buoyantPimpleFoam: energy equation + p_rgh
+    // buoyantSimpleFoam / buoyantPimpleFoam solve the energy equation and p_rgh
     // Use conservative upwind for energy fields; linearUpwind for U (no TENO - energy coupling is unstable with high-order schemes)
     if (m_isBuoyant) {
         const bool bSteady = !m_isTransient;
@@ -812,7 +812,7 @@ void SolverConfigDialog::writeFvSchemes()
         return;
     }
 
-    // Standard path: simpleFoam, pimpleFoam, icoFoam, rhoSimpleFoam, rhoPimpleFoam
+    // Standard path for simpleFoam, pimpleFoam, icoFoam, rhoSimpleFoam, rhoPimpleFoam
     const bool steady = !m_isTransient;
     o << "FoamFile\n{ version 2.0; format ascii; class dictionary; object fvSchemes; }\n\n"
       << "ddtSchemes      { default " << (steady ? "steadyState" : "backward") << "; }\n\n"
@@ -866,25 +866,25 @@ void SolverConfigDialog::writeFvSolution()
       << "solvers\n{\n";
 
     if (m_isCentral) {
-        // rhoCentralFoam: density-based; sensibleInternalEnergy → field 'e' (not 'h')
+        // rhoCentralFoam is density-based, sensibleInternalEnergy solves field 'e'
         o << "    \"(rho|rhoU|rhoE)\" { solver diagonal; }\n"
           << "    U  { solver smoothSolver; smoother GaussSeidel; nSweeps 2; tolerance 1e-9; relTol 0.01; }\n"
           << "    e  { $U; tolerance 1e-10; relTol 0; }\n";
         if (!m_isLaminar)
             o << "    \"(k|omega|epsilon|nuTilda)\" { solver smoothSolver; smoother GaussSeidel; tolerance 1e-8; relTol 0.1; }\n";
     } else if (m_isBuoyant) {
-        // buoyantSimpleFoam/buoyantPimpleFoam: p_rgh is primary pressure variable
-        // rho.* is computed from EOS (explicit), not solved as a PDE - diagonal is correct
+        // buoyantSimpleFoam/buoyantPimpleFoam use p_rgh as the primary pressure variable
+        // rho.* comes explicitly from the EOS, so diagonal is correct
         o << "    \"rho.*\" { solver diagonal; }\n";
         if (m_isTransient) {
-            // buoyantPimpleFoam: GAMG for p_rgh (more robust than PCG+DIC on non-orthogonal meshes)
+            // buoyantPimpleFoam uses GAMG for p_rgh (more robust than PCG+DIC on non-orthogonal meshes)
             // $U in Final block resolves to the "(U|h|k|omega|epsilon)" regex entry via OF dict lookup
             o << "    p_rgh       { solver GAMG; smoother GaussSeidel; tolerance 1e-8; relTol 0.01; }\n"
               << "    p_rghFinal  { $p_rgh; relTol 0; }\n"
               << "    \"(U|h|k|omega|epsilon)\" { solver PBiCGStab; preconditioner DILU; tolerance 1e-7; relTol 0.1; }\n"
               << "    \"(U|h|k|omega|epsilon)Final\" { $U; relTol 0; }\n";
         } else {
-            // buoyantSimpleFoam: GAMG for p_rgh; no Final entries needed for SIMPLE
+            // buoyantSimpleFoam uses GAMG for p_rgh, SIMPLE needs no Final entries
             o << "    p_rgh       { solver GAMG; smoother GaussSeidel; tolerance 1e-7; relTol 0.01; }\n"
               << "    p_rghFinal  { $p_rgh; relTol 0; }\n"
               << "    \"(U|h|k|omega|epsilon)\" { solver PBiCGStab; preconditioner DILU; tolerance 1e-7; relTol 0.05; }\n";
@@ -893,8 +893,8 @@ void SolverConfigDialog::writeFvSolution()
         // incompressible (simpleFoam/pimpleFoam/icoFoam) and compressible SIMPLE (rhoSimpleFoam/rhoPimpleFoam)
         o << "    p       { solver GAMG; smoother GaussSeidel; tolerance 1e-7; relTol 0.01; }\n"
           << "    pFinal  { $p; relTol 0; }\n";
-        // Steady: smoothSolver+symGaussSeidel for U (more robust than GAMG on complex/non-orthogonal
-        // meshes). Transient: PBiCGStab+DILU.
+        // Steady runs use smoothSolver+symGaussSeidel for U (more robust than GAMG on complex/non-orthogonal
+        // meshes), transient runs use PBiCGStab+DILU.
         if (m_isTransient)
             o << "    U  { solver PBiCGStab; preconditioner DILU; tolerance 1e-8; relTol 0.1; }\n";
         else
@@ -912,7 +912,7 @@ void SolverConfigDialog::writeFvSolution()
 
     o << "}\n\n";
 
-    // Algorithm block: icoFoam and pisoFoam read PISO, not PIMPLE
+    // icoFoam and pisoFoam read a PISO algorithm block
     if (m_solver == "icoFoam" || m_solver == "pisoFoam") {
         const int nCorr = m_nCorrectors ? m_nCorrectors->value() : 2;
         o << "PISO\n{\n"
@@ -932,7 +932,7 @@ void SolverConfigDialog::writeFvSolution()
               << "    pRefValue   " << refP << ";\n";
         }
         o << "}\n\n"
-          // Transient: no under-relaxation (full update per step)
+          // Transient runs skip under-relaxation (full update per step)
           << "relaxationFactors\n{\n"
           << "    equations { \".*\" 1; }\n"
           << "}\n";
@@ -952,7 +952,7 @@ void SolverConfigDialog::writeFvSolution()
         o << "}\n\n"
           << "relaxationFactors\n{\n";
         if (m_isBuoyant)
-            // buoyant: p_rgh 0.7 per OF tutorials; U low for stability
+            // buoyant solvers use p_rgh 0.7 per OF tutorials and a low U for stability
             o << "    fields  { rho 1; p_rgh 0.7; }\n"
               << "    equations { U 0.2; h 0.3; k 0.5; omega 0.5; epsilon 0.5; }\n";
         else if (m_isCompressible)
@@ -974,14 +974,14 @@ void SolverConfigDialog::writeZeroFields(const QList<PatchInfo>& patches)
     // 0/U - velocity vector respects domain flow axis and AoA from domain setup
     {
         // Read flow axis and AoA from QSettings (written by DomainSetupDialog on Generate)
-        // Default -X: blockMesh puts the inlet on the X-max face
+        // Default -X puts the blockMesh inlet on the X-max face
         QString flowAxis = QSettings().value("domainSetup/flowAxis", "-X").toString();
         double  aoaDeg   = QSettings().value("domainSetup/aoa",      0.0).toDouble();
         double  aoaRad   = aoaDeg * M_PI / 180.0;
 
-        // Compute velocity components: AoA rotates in the plane of the flow axis and the
+        // AoA rotates the velocity in the plane of the flow axis and the
         // axis 90° above it (pitch about the axis perpendicular to both).
-        // For ±X flow: pitch in XZ plane. For ±Y: pitch in YX plane. For ±Z: pitch in ZY plane.
+        // ±X flow pitches in the XZ plane, ±Y in YX and ±Z in ZY.
         auto makeVec = [&](double sign) -> QString {
             double u0 = sign * vel * std::cos(aoaRad);
             double u1 = vel * std::sin(aoaRad);          // perpendicular (lift direction)
@@ -1056,7 +1056,7 @@ void SolverConfigDialog::writeZeroFields(const QList<PatchInfo>& patches)
         }
     }
 
-    // 0/k, 0/omega, 0/nut: turbulence fields for all non-laminar solvers
+    // 0/k, 0/omega and 0/nut turbulence fields for all non-laminar solvers
     if (!m_isLaminar) {
         const bool isRAS = !(m_simType && m_simType->currentData().toString() == "LES");
         const QString rasModel = m_rasModel ? m_rasModel->currentData().toString() : "kOmegaSST";
@@ -1064,7 +1064,7 @@ void SolverConfigDialog::writeZeroFields(const QList<PatchInfo>& patches)
         const bool isKE = isRAS && rasModel == "kEpsilon";
         const double k0 = 1.5 * std::pow(0.05 * vel, 2.0);  // 5% turbulence intensity
 
-        // omega = k / (TVR * nu), TVR=10 targets nut/nu=10 at inlet (Menter 1994: farfield TVR 0.1-10)
+        // omega = k / (TVR * nu), TVR=10 targets nut/nu=10 at inlet (Menter 1994 farfield TVR 0.1-10)
         double nu_est;
         if (m_isCompressible) {
             const double mu   = m_mu ? m_mu->value() : 1.8e-5;
@@ -1164,7 +1164,7 @@ void SolverConfigDialog::writeZeroFields(const QList<PatchInfo>& patches)
             }
         }
 
-        // 0/epsilon (kEpsilon): epsilon = Cmu * k * omega
+        // 0/epsilon for kEpsilon, epsilon = Cmu * k * omega
         if (isKE) {
             const double eps0 = 0.09 * k0 * omega0;
             QFile::remove(m_caseDir + "/0/epsilon");
@@ -1186,7 +1186,7 @@ void SolverConfigDialog::writeZeroFields(const QList<PatchInfo>& patches)
             }
         }
 
-        // 0/mut (compressible only: mut = rho * nut, wall function handles it)
+        // 0/mut for compressible only, mut = rho * nut and the wall function handles it
         if (m_isCompressible) {
             QFile::remove(m_caseDir + "/0/mut");
             QFile f(m_caseDir + "/0/mut");
@@ -1246,7 +1246,7 @@ void SolverConfigDialog::writeZeroFields(const QList<PatchInfo>& patches)
         }
     }
 
-    // 0/rho (rhoCentralFoam only: density-based solver, rho is a primary variable)
+    // 0/rho for rhoCentralFoam only, where rho is a primary variable
     if (m_isCentral) {
         // rho = p / (R * T),  R = Ru / molWeight
         const double molW = m_molWeight ? m_molWeight->value() : 28.97;

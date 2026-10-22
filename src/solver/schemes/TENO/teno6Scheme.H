@@ -27,12 +27,12 @@ namespace Foam
 {
 
 // TENO6 - 6th-order Targeted ENO scheme (Fu et al. 2016, Table 3).
-// Uses 4 candidate 3-point sub-stencils + 1 wide 6th-order stencil:
+// Uses 4 candidate 3-point sub-stencils and 1 wide 6th-order stencil
 //   S_K : wide central stencil  (6th-order optimal)
 //   S_0 : owner 1-ring          (left-biased)
 //   S_1 : neighbour 1-ring      (right-biased)
 //   S_2 : owner 2nd-ring        (far left, strongly upstream)
-// Global discriminator: τ6 = |β_S2 - β_S1|
+// Global discriminator τ6 = |β_S2 - β_S1|
 //   (leftmost vs rightmost sub-stencil, analogous to TENO5 τ5 = |β0 - β2|)
 // Adaptive C_T scales with local smoothness (TENO-A, Fu 2018).
 // Smoothness indicators computed per field component (vector-safe).

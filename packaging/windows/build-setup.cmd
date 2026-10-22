@@ -1,6 +1,4 @@
 @echo off
-rem Builds dist\CakeStudio.exe and dist\CakeStudioSetup.exe with the C# compiler built into Windows.
-rem Usage: build-setup.cmd [version]   (default 0.1.0)
 setlocal
 pushd "%~dp0"
 

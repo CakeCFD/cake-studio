@@ -158,7 +158,7 @@ int matchBrace(const QString& t, int open, int end)
     return -1;
 }
 
-// Entries directly inside [begin, end): keyword { ... } or keyword value;
+// Entries directly inside [begin, end), either keyword { ... } or keyword value;
 // Directives (#include "x", #codeStream {...}) are returned with their '#' key.
 QList<DictEntry> topLevelEntries(const QString& t, int begin, int end)
 {
@@ -211,7 +211,7 @@ QList<DictEntry> topLevelEntries(const QString& t, int begin, int end)
             continue;
         }
 
-        // Plain entry: runs to the ';' outside any nested ( ) or { }
+        // A plain entry runs to the ';' outside any nested ( ) or { }
         int depth = 0;
         while (j < end) {
             const QChar c = t[j];
@@ -266,7 +266,7 @@ static bool looksLikeVectorField(const QString& text)
     auto m = dimRe.match(text);
     if (!m.hasMatch()) return false;
     QStringList d = m.captured(1).trimmed().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-    // velocity: [0 1 -1 0 0 0 0]
+    // velocity dimensions [0 1 -1 0 0 0 0]
     return d.size() >= 3 && d[1] == "1" && d[2] == "-1";
 }
 
@@ -412,7 +412,7 @@ void BCEditorDialog::buildTab(const QString& fieldName, FieldData& fd)
 
 bool BCEditorDialog::writeField(FieldData& fd, const QList<BCPatch>& patches, QString& errOut)
 {
-    // Splice edits into the original text: untouched patches stay
+    // Splice edits into the original text so untouched patches stay
     // byte-identical, and in edited ones only the type / value entries
     // change (inletValue, p0, gradient, Function1 dicts, #include survive).
     const QList<BCPatch> orig = parsePatches(fd.originalText);
@@ -471,9 +471,9 @@ bool BCEditorDialog::writeField(FieldData& fd, const QList<BCPatch>& patches, QS
         }
     }
 
-    if (changed == 0) return true;   // nothing edited: leave the file alone
+    if (changed == 0) return true;   // nothing edited, leave the file alone
 
-    // Validate: re-parse and confirm patch count matches
+    // Re-parse and confirm the patch count matches
     QList<BCPatch> check = parsePatches(result);
     if (check.size() != orig.size()) {
         errOut = QString("Post-write validation failed: expected %1 patches, got %2")

@@ -1,6 +1,3 @@
-// Starts CakeStudio inside WSL2 without a console window. Built by build-setup.cmd.
-// App path: CAKESTUDIO_PATH, the installed copy, then ~/CFD_development; CakeStudio.distro picks the distro.
-
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -38,7 +35,7 @@ static class CakeStudioLauncher
             if (distro.Length > 0) distroArg = "-d " + distro + " ";
         }
 
-        // Exit 127 flags a missing binary. App output goes to a log: our stderr pipe closes
+        // Exit 127 flags a missing binary. App output goes to a log because our stderr pipe closes
         // when the launcher exits, and writing to it would kill the app with SIGPIPE.
         string script = pick +
                         "[ -x \"$app\" ] || { echo \"Not found: $app\" >&2; exit 127; }; " +

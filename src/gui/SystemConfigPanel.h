@@ -31,7 +31,7 @@
 #include "themes/ThemeEngine.h"
 
 // Double spinbox that shows values in shortest 'g' form (0.0005, 1e-05, 200)
-// instead of a fixed number of decimals, so small transient times survive.
+// so small transient times survive.
 class GDoubleSpinBox : public QDoubleSpinBox {
 public:
     using QDoubleSpinBox::QDoubleSpinBox;
@@ -86,7 +86,7 @@ private:
     QLabel*    m_statusLbl   = nullptr;
     QDoubleSpinBox* m_stepsSpin  = nullptr;
     QDoubleSpinBox* m_writeEvery = nullptr;
-    // Values last read from / written to controlDict: anything equal to these was
+    // Values last read from or written to controlDict. Anything equal to these was
     // not edited by the user and must not be written back
     double     m_syncedEndTime       = std::numeric_limits<double>::quiet_NaN();
     double     m_syncedWriteInterval = std::numeric_limits<double>::quiet_NaN();

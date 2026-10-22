@@ -5,7 +5,7 @@
 
 struct Vec3 { double x, y, z; };
 
-// Eq.17: smoothness indicator using simple finite difference gradient
+// Eq.17 smoothness indicator using a simple finite difference gradient
 // For a stencil of cells, beta = |grad u|^2 averaged (first order)
 // + curvature term (second order)
 double beta(const std::vector<double>& vals, const std::vector<Vec3>& offs)
@@ -25,22 +25,22 @@ double beta(const std::vector<double>& vals, const std::vector<Vec3>& offs)
         double du = vals[i] - vals[0];
         double w  = 1.0 / h2;
 
-        // Directional gradient: project du onto direction
+        // Directional gradient projects du onto the direction
         gradX += w * (du * dx / h2);
         gradY += w * (du * dy / h2);
         gradZ += w * (du * dz / h2);
         sumW  += w;
 
-        // Curvature: second difference (variation from linear prediction)
+        // Curvature from the second difference (variation from linear prediction)
         // curv += w * sqr(du); // raw
     }
 
     if (sumW > 0) { gradX /= sumW; gradY /= sumW; gradZ /= sumW; }
 
-    // First-order term: |grad|^2
+    // First-order term |grad|^2
     double beta1 = gradX*gradX + gradY*gradY + gradZ*gradZ;
 
-    // Second-order term: residual variance after linear removal
+    // Second-order term from the residual variance after linear removal
     double beta2 = 0.0;
     for (int i = 1; i < n; ++i) {
         double dx = offs[i].x - offs[0].x;
@@ -81,7 +81,7 @@ int main()
 {
     std::cout << "=== TENO Scheme Validation (Fu et al. 2021) ===\n\n";
 
-    // Test 1: smooth sin field
+    // Test 1, smooth sin field
     {
         std::vector<double> valsK = {0.0, 0.588, 0.951, 0.588, 0.0};
         std::vector<Vec3>   offsK = {{0,0,0},{0.2,0,0},{0.4,0,0},{-0.2,0,0},{-0.4,0,0}};
@@ -98,7 +98,7 @@ int main()
         std::cout << "  deltaK=" << w.deltaK << " -> large stencil: " << (w.deltaK>0.5?"YES (correct)":"NO") << "\n\n";
     }
 
-    // Test 2: step discontinuity at face
+    // Test 2, step discontinuity at a face
     {
         std::vector<double> valsK = {1.0, 1.0, 0.0, 0.0, 1.0};
         std::vector<Vec3>   offsK = {{0,0,0},{-0.2,0,0},{0.2,0,0},{0.4,0,0},{-0.4,0,0}};
@@ -116,7 +116,7 @@ int main()
         std::cout << "  delta0=" << w.delta0 << " delta1=" << w.delta1 << " -> ENO among small stencils\n\n";
     }
 
-    // Test 3: gradient field (smooth but high gradient)
+    // Test 3, smooth field with a high gradient
     {
         std::vector<double> valsK = {0.0, 0.1, 0.2, 0.3, 0.4};
         std::vector<Vec3>   offsK = {{0,0,0},{0.1,0,0},{0.2,0,0},{0.3,0,0},{0.4,0,0}};

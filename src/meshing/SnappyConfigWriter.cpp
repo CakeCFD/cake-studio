@@ -93,7 +93,7 @@ bool SnappyConfigWriter::write(const QString& caseDir, const SnappyParams& p)
       << "    explicitFeatureSnap true;\n"
       << "    multiRegionFeatureSnap false;\n}\n\n"
 
-      // Layers: OF 2412 compatible
+      // OF 2412 compatible layers
       << "addLayersControls\n{\n"
       << "    relativeSizes true;\n"
       << "    layers\n    {\n"

@@ -67,9 +67,8 @@
 
 // helpers
 
-// Docked panels: closable only: no dragging, no floating on WSLg. objName is
-// REQUIRED: QMainWindow::saveState()/restoreState() matches
-// docks by objectName; without it Qt can't restore the layout on restart.
+// Docked panels are closable only, with no dragging or floating on WSLg. objectName is
+// required because saveState()/restoreState() match docks by it.
 static QDockWidget* makeDock(const QString& title, const QString& objName,
                               QWidget* widget, Qt::DockWidgetAreas areas, MainWindow* win)
 {
@@ -93,7 +92,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resize(1400, 900);
     setupUI();
 
-    // Toast overlay: sits above everything, hidden by default
+    // Toast overlay sits above everything, hidden by default
     m_toast = new QLabel(this);
     m_toast->setAlignment(Qt::AlignCenter);
     ThemeEngine::setRole(m_toast, "toast");
@@ -111,7 +110,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 }
 
 void MainWindow::setupUI() {
-    setupDockPanels();   // panels first: menu needs their toggle actions
+    setupDockPanels();   // panels first since the menu needs their toggle actions
     setupMenuBar();
     setupToolBar();
     updateTitle();
@@ -125,23 +124,23 @@ void MainWindow::setupUI() {
 // dock panel setup
 
 void MainWindow::setupDockPanels() {
-    // Two separate viewports: Studio for results, Mesh for geometry preview.
+    // Studio viewport shows results, Mesh viewport previews geometry.
     // m_meshViewport is created lazily on first switch to Mesh mode to avoid
     // paying for two VTK OpenGL contexts at startup.
-    m_viewport      = new ViewportWidget(this, true);   // Studio: full toolbar
+    m_viewport      = new ViewportWidget(this, true);   // Studio has the full toolbar
     m_viewportStack = new QStackedWidget(this);
-    m_viewportStack->addWidget(m_viewport);          // index 0: Studio
-    m_viewportStack->addWidget(new QWidget(this));   // index 1: placeholder until Mesh mode
+    m_viewportStack->addWidget(m_viewport);          // index 0 is Studio
+    m_viewportStack->addWidget(new QWidget(this));   // index 1 is a placeholder until Mesh mode
     setCentralWidget(m_viewportStack);
 
-    // System config bar: pinned to the top
+    // System config bar pinned to the top
     m_sysPanel = new SystemConfigPanel(this);
     auto* sysDock = makeDock("System", "dockSystem", m_sysPanel, Qt::TopDockWidgetArea, this);
     sysDock->setFeatures(QDockWidget::NoDockWidgetFeatures);  // not movable/closable
     sysDock->setTitleBarWidget(new QWidget);                   // hide title bar
     addDockWidget(Qt::TopDockWidgetArea, sysDock);
 
-    // All four panels: float / dock / tab freely. Any area allowed.
+    // All four panels can float, dock and tab freely in any area.
     m_caseTree  = new CaseTreePanel(this);
     m_caseDock  = makeDock("Case", "dockCase", m_caseTree, Qt::AllDockWidgetAreas, this);
     addDockWidget(Qt::LeftDockWidgetArea, m_caseDock);
@@ -169,7 +168,7 @@ void MainWindow::setupDockPanels() {
     m_consoleDock->setMinimumHeight(80);
 
     // Style the tab bar Qt places on tabified dock groups so text elides with "…"
-    // instead of hard-clipping, and tabs have breathing room.
+    // and tabs keep some breathing room.
     // min-width must cover the longest tab label ("Dataset Manager" ≈ 130 px at 11 px font).
     setStyleSheet(styleSheet() + R"(
         QTabBar::tab {
@@ -185,7 +184,7 @@ void MainWindow::setupDockPanels() {
         }
     )");
 
-    // Cake Mesh panel: hidden until the user switches to Mesh mode.
+    // Cake Mesh panel stays hidden until the user switches to Mesh mode.
     // setViewport() is called lazily in setMode() when m_meshViewport is created.
     m_meshPanel = new CakeMeshPanel(this);
     m_meshDock  = makeDock("Cake Mesh", "dockMesh", m_meshPanel, Qt::AllDockWidgetAreas, this);
@@ -245,7 +244,7 @@ void MainWindow::setupDockPanels() {
         if (m_meshViewport) m_meshViewport->updateDomainPreview(x0,y0,z0, x1,y1,z1, axis);
     });
 
-    // Export to Studio: switch mode, load mesh STL into Studio viewport, set case dir
+    // Export to Studio switches mode, loads the mesh STL and sets the case dir
     connect(m_meshPanel, &CakeMeshPanel::exportRequested, this, [this](const QString& caseDir){
         if (m_console)       m_console->setCaseDir(caseDir);
         if (m_caseTree)      m_caseTree->setCaseDir(caseDir);
@@ -498,7 +497,7 @@ void MainWindow::setupMenuBar() {
     connect(resetViewAct, &QAction::triggered,
             this, [this](){ if (m_viewport) m_viewport->resetCamera(); });
 
-    // Window menu: panel toggles + workspace presets
+    // Window menu with panel toggles and workspace presets
     auto* winMenu = menuBar()->addMenu("Window");
 
     winMenu->addSection("Panels");
@@ -538,8 +537,8 @@ void MainWindow::setupMenuBar() {
     focusAct->setToolTip("Hide all panels: press F again to restore");
     connect(focusAct, &QAction::triggered, this, &MainWindow::toggleFocusMode);
 
-    // QShortcut lives on the window directly: stays active even when menubar is hidden.
-    // Window context only (not dialogs), and never while a text/choice widget has focus.
+    // QShortcut lives on the window so it stays active while the menubar is hidden.
+    // Window context only, and never while a text or choice widget has focus.
     auto* focusShortcut = new QShortcut(Qt::Key_F, this);
     focusShortcut->setContext(Qt::WindowShortcut);
     connect(focusShortcut, &QShortcut::activated, this, [this]{
@@ -652,7 +651,7 @@ void MainWindow::setupToolBar() {
 void MainWindow::applyWorkspaceDefault() {
     for (auto* d : {m_caseDock, m_propDock, m_dataDock, m_consoleDock})
         { d->setFloating(false); d->show(); }
-    // Explicitly re-place: Case left, Properties+Dataset right, Console bottom
+    // Re-place Case left, Properties and Dataset right, Console bottom
     addDockWidget(Qt::LeftDockWidgetArea,   m_caseDock);
     addDockWidget(Qt::RightDockWidgetArea,  m_propDock);
     addDockWidget(Qt::RightDockWidgetArea,  m_dataDock);
@@ -706,10 +705,9 @@ void MainWindow::applyWorkspaceWide() {
 
 // save / restore
 
-// Bumped whenever the dock set or their objectNames change. State saved by an older
-// build is discarded rather than restored: restoring a mismatched layout is what
-// produced the broken/overlapping panels.
-static constexpr int kLayoutVersion = 5;  // bumped: added dockDataset
+// Bumped whenever the dock set or objectNames change. Older saved state is discarded
+// because a mismatched layout produced broken, overlapping panels.
+static constexpr int kLayoutVersion = 5;  // bumped for dockDataset
 
 void MainWindow::saveWorkspace() {
     QSettings s("CakeCFD", "CakeStudio");
@@ -1084,11 +1082,11 @@ bool MainWindow::loadProject(const QString& path)
         PhysicsPanel::migrateTenolibsToControlDict(caseDir);
     }
 
-    // Restore viewport: load results + geometry regardless of whether vp key exists
+    // Restore the viewport results and geometry even without a vp key
     if (m_viewport && !caseDir.isEmpty() && QDir(caseDir).exists()) {
         m_viewport->loadOFResults(caseDir);
 
-        // Restore STL geometry: prefer saved path, fall back to constant/triSurface auto-detect
+        // Restore STL geometry from the saved path, falling back to constant/triSurface
         QJsonObject vp = root["viewport"].toObject();
         QString stlPath = vp["stl_path"].toString();
         if (stlPath.isEmpty() || !QFile::exists(stlPath)) {
@@ -1133,7 +1131,7 @@ bool MainWindow::loadProject(const QString& path)
             m_meshViewport->updateDomainPreview(m_dpX0,m_dpY0,m_dpZ0, m_dpX1,m_dpY1,m_dpZ1, m_dpAxis);
     }
 
-    // Restore mesh panel state: geometry reload triggers viewport update
+    // Restore mesh panel state, whose geometry reload updates the viewport
     if (m_meshPanel && root.contains("mesh_panel"))
         m_meshPanel->setState(root["mesh_panel"].toObject());
 
@@ -1181,7 +1179,7 @@ void MainWindow::onNewProject()
         QSettings("CakeCFD","CakeStudio").value("lastProjectDir", QDir::homePath()).toString());
     if (location.isEmpty()) return;
 
-    // Create project folder: <location>/<name>/
+    // Create the project folder <location>/<name>/
     QString projectDir = location + "/" + name;
     if (QDir(projectDir).exists()) {
         auto btn = QMessageBox::question(this, "Folder Exists",
@@ -1215,7 +1213,7 @@ void MainWindow::onNewProject()
 
     QSettings("CakeCFD","CakeStudio").setValue("lastProjectDir", location);
 
-    // Relaunch into the new project rather than trying to scrub every panel, actor and
+    // Relaunch into the new project because scrubbing every panel, actor and
     // cached dataset in place. Too much state (VTK actors, cached meshes, panel widgets)
     // survives an in-place reset and leaks the previous project's geometry into the new
     // one. A fresh process is the only reliable guarantee of a clean slate.
@@ -1224,7 +1222,7 @@ void MainWindow::onNewProject()
         qApp->quit();
         return;
     }
-    // Relaunch failed: carry on in-process rather than losing the new project.
+    // If the relaunch fails, carry on in-process to keep the new project.
     statusBar()->showMessage("Project created: " + projectDir);
 }
 

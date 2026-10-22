@@ -155,7 +155,7 @@ ThermalPropertiesDialog::ThermalPropertiesDialog(const QString& caseDir, QWidget
     connect(btnApply,    &QPushButton::clicked,          this, &ThermalPropertiesDialog::onApply);
 
     auto syncEos = [this, eosForm](const QString& eos) {
-        // Qt5 has no QFormLayout::setRowVisible: toggle field + label
+        // Qt5 has no QFormLayout::setRowVisible, so toggle field and label
         auto showRow = [eosForm](QWidget* w, bool on) {
             w->setVisible(on);
             if (QWidget* l = eosForm->labelForField(w)) l->setVisible(on);
@@ -215,7 +215,7 @@ void ThermalPropertiesDialog::loadExisting()
 
     if (!dictAt({"thermoType"}).second) return;
 
-    // Existing case: show its own values, editable, instead of a preset
+    // An existing case shows its own editable values
     m_preset->setCurrentText("Custom");
 
     setCombo(m_thermoType, value({"thermoType"}, "type"));
@@ -297,7 +297,7 @@ void ThermalPropertiesDialog::onApply()
             .arg(m_pr->value(), 0, 'f', 6);
     }
 
-    // janaf ignores Cp/Hf and needs its polynomial coefficients instead
+    // janaf ignores Cp/Hf and needs its polynomial coefficients
     QString thermoBlock;
     if (m_thermo->currentText() == "janaf") {
         thermoBlock = QString(

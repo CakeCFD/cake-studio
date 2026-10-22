@@ -109,7 +109,7 @@ private:
     AppMode         m_mode               = AppMode::Studio;
     QList<QAction*> m_studioToolbarItems; // shown only in Studio mode
 
-    // Factory-default layout captured at startup: restored by "Default" preset
+    // Factory-default layout captured at startup for the "Default" preset
     QByteArray m_defaultState;
     QByteArray m_defaultGeometry;
 
@@ -121,7 +121,7 @@ private:
     bool    m_projectDirty = false;
     QMenu*  m_recentMenu   = nullptr;
 
-    // Last domain preview params: saved/restored with the project
+    // Last domain preview params, saved and restored with the project
     double  m_dpX0 = 0, m_dpY0 = 0, m_dpZ0 = 0;
     double  m_dpX1 = 0, m_dpY1 = 0, m_dpZ1 = 0;
     QString m_dpAxis;
@@ -131,12 +131,12 @@ private:
     QLabel* m_toast      = nullptr;
     QTimer* m_toastTimer = nullptr;
 
-    // Autosave: fires every 3 minutes when a project path is set
+    // Autosave fires every 3 minutes when a project path is set
     QTimer* m_autosaveTimer = nullptr;
     void    startAutosave();
     void    onAutosave();
 
-    // Viewport focus mode: F key hides all docks
+    // Viewport focus mode, the F key hides all docks
     bool       m_focusMode      = false;
     QByteArray m_preFocusState;
     void       toggleFocusMode();

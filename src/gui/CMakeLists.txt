@@ -18,6 +18,7 @@ set(SOURCES
     ConsolePanel.cpp
     ResidualPlot.cpp
     ViewportWidget.cpp
+    FlowParticles.cpp
     MeshWizard.cpp
     CakeMeshPanel.cpp
     ExportResultsDialog.cpp
@@ -45,6 +46,7 @@ set(HEADERS
     ConsolePanel.h
     ResidualPlot.h
     ViewportWidget.h
+    FlowParticles.h
     MeshWizard.h
     CakeMeshPanel.h
     ExportResultsDialog.h

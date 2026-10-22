@@ -140,7 +140,7 @@ void OpenCaseDialog::scanCase(const QString& dir)
         if (isNum && entry != "0") timeDirs << entry;
     }
     if (!timeDirs.isEmpty()) {
-        // Numeric order: as strings "1000" < "200"
+        // Numeric order, since as strings "1000" < "200"
         std::sort(timeDirs.begin(), timeDirs.end(),
                   [](const QString& a, const QString& b) { return a.toDouble() < b.toDouble(); });
         m_resultsInfo->setText(ok(QString("%1 time step(s): latest: %2")

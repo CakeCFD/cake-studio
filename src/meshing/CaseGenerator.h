@@ -62,7 +62,7 @@ enum class BCType {
 struct PatchBC {
     QString name;
     BCType  type     = BCType::Wall;
-    double  velocity = 0.0; // VelocityInlet: x-component (m/s)
+    double  velocity = 0.0; // VelocityInlet x-component (m/s)
 };
 
 struct CaseParams {
@@ -75,7 +75,7 @@ struct CaseParams {
     double          aoaDeg           = 0.0;    // angle of attack, degrees (pitch about Y, +ve = nose up)
     // Flow direction. BlockMeshWriter puts the inlet on the X-max face, so the
     // flow must run in -X or the inlet velocity points out of the domain.
-    QString         flowAxis         = "-X";   // flow direction: +X/-X/+Y/-Y/+Z/-Z
+    QString         flowAxis         = "-X";   // flow direction +X/-X/+Y/-Y/+Z/-Z
     double          nu               = 1.5e-5; // kinematic viscosity m^2/s (air)
     double          meshPadding      = 0.5;    // fraction of bbox on each side
     int             bgMeshCells      = 40;     // background mesh cells per direction

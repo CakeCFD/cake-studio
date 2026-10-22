@@ -1,5 +1,4 @@
-﻿# FindOCCT.cmake - OCCT 7.6 on Ubuntu
-set(OCCT_INC_HINT /usr/include/opencascade)
+﻿set(OCCT_INC_HINT /usr/include/opencascade)
 set(OCCT_LIB_HINT /usr/lib/x86_64-linux-gnu)
 
 find_path(OCCT_INCLUDE_DIR TopoDS_Shape.hxx HINTS ${OCCT_INC_HINT})

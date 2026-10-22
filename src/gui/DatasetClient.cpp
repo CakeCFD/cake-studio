@@ -420,7 +420,7 @@ void DatasetClient::onQueryReply()
     reply->deleteLater();
     m_inflight.removeAll(QPointer<QNetworkReply>(reply));
 
-    // Issued before a Cancel: drop it so it cannot overwrite newer results
+    // Issued before a Cancel, so drop it to protect newer results
     if (reply->property("generation").toULongLong() != m_generation) return;
 
     // Every failure path ends the range job so later queries are not refused
@@ -480,7 +480,7 @@ void DatasetClient::onQueryReply()
             return;
         }
     } else if (soap) {
-        // Parse SOAP XML response: collect only the wanted element tags
+        // Collect only the wanted element tags from the SOAP XML response
         auto meta = k_fieldMeta.value(field, {"GetVelocity", {"x","y","z"}, 3});
         QSet<QString> wanted(meta.resultTags.begin(), meta.resultTags.end());
 
@@ -501,7 +501,7 @@ void DatasetClient::onQueryReply()
             return;
         }
     } else {
-        // Custom API: parse via saved response format settings
+        // Custom API responses parse via the saved format settings
         QSettings settings("CakeCFD", "DatasetPanel");
         QString jsonPath = settings.value("customApi/jsonPath", "").toString();
         QString keysStr  = settings.value("customApi/componentKeys", "").toString();
@@ -531,7 +531,7 @@ void DatasetClient::onQueryReply()
     }
 }
 
-// Walk one dotted segment: object key, or array index when numeric
+// Walk one dotted segment as an object key, or an array index when numeric
 static QJsonValue jsonStep(const QJsonValue& cur, const QString& seg)
 {
     if (cur.isObject()) return cur.toObject().value(seg);

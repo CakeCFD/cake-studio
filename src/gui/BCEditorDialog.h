@@ -53,7 +53,7 @@ struct BCPatch {
     QString type;
     QString value;
     bool    nonUniform = false;
-    // Offsets into the parsed text: '{' and matching '}' of the patch dict
+    // Offsets of the patch dict's '{' and matching '}' in the parsed text
     int     braceOpen  = -1;
     int     braceClose = -1;
 };

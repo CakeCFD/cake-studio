@@ -48,7 +48,7 @@ private slots:
 
 private:
     bool computeBounds();
-    // Axis-aware domain bounds: shared between preview, blockMesh, snappyHexMesh
+    // Axis-aware domain bounds shared by the preview, blockMesh and snappyHexMesh
     void getDomainBounds(double& x0, double& x1, double& y0, double& y1,
                          double& z0, double& z1) const;
     bool writeBlockMeshDict();

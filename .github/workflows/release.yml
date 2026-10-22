@@ -1,7 +1,5 @@
 name: Release
 
-# Builds the prebuilt Linux package and the Windows installer for a release tag
-# and attaches them to the GitHub release (created as a draft if missing).
 on:
   push:
     tags: [ "v*" ]

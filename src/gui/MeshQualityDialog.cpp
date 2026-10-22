@@ -249,8 +249,8 @@ void MeshQualityDialog::parseAndDisplay(const QString& out)
                 "< 100 ideal", ar < 100 ? Metric::OK : ar < 1000 ? Metric::WARN : Metric::ERROR});
     }
 
-    // Min volume can legitimately be negative (inverted cells): match the
-    // sign explicitly instead of treating -1 as "not found"
+    // Min volume can legitimately be negative (inverted cells), so match the
+    // sign explicitly and keep -1 distinct from "not found"
     double minVol = -1.0;
     bool   haveMinVol = false;
     for (const QString& p : {QString(R"(\bMin volume\s*=\s*%F)"),

@@ -48,7 +48,7 @@ private:
     // Read-only display
     void addRow(const QString& label, const QString& value, bool mono = false);
     void addBadge(const QString& text, bool ok);
-    // Editable rows: onCommit is called with the new value when the user commits
+    // Editable rows call onCommit with the new value when the user commits
     void addEditableRow(const QString& label, const QString& value,
                         std::function<void(const QString&)> onCommit);
     void addComboRow(const QString& label, const QStringList& options, const QString& current,
@@ -70,7 +70,7 @@ private:
     QFormLayout* m_form     = nullptr;
     QString      m_caseDir;
 
-    // Last shown state: used by onThemeChanged() to rebuild in the correct theme
+    // Last shown state, used by onThemeChanged() to rebuild in the new theme
     int     m_lastType    = -1;
     QString m_lastPath;
     QString m_lastCaseDir;

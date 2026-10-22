@@ -116,7 +116,7 @@ teno6Scheme<Type>::correction(
             const scalar b1 = betaIndicatorCmpt(vf, cmpt, fd.stencil1, fd.lsq1, fC);
             const scalar b2 = betaIndicatorCmpt(vf, cmpt, fd.stencil2, fd.lsq2, fC);
 
-            // Global smoothness discriminator: max pairwise beta spread across all stencils.
+            // Global smoothness discriminator is the max pairwise beta spread across stencils.
             // Stencil2 is a 2nd-ring (wide area) - its beta can be 100x larger than
             // the 1-ring betas, making |b2-b1| blow up tau6 and overflow (1+tau/b)^q
             // to Inf. Max-pairwise keeps tau in proportion to the actual local spread.
@@ -129,7 +129,7 @@ teno6Scheme<Type>::correction(
                     Foam::mag(b0-b2)),
                     Foam::mag(b1-b2)) + eps_;
 
-            // Cap ratio before exponentiation: (1+1e20)^6 ~ 1e120, within double range.
+            // Cap the ratio before exponentiation, (1+1e20)^6 ~ 1e120 stays within double range.
             // Without cap, stencil2's large beta → tau/b_k → Inf → g = Inf → NaN comparisons
             // → deltaK always 0 → smooth-flow guard never fires → divergence.
             auto safePow = [&](scalar b) -> scalar {
@@ -141,14 +141,14 @@ teno6Scheme<Type>::correction(
             const scalar g2 = safePow(b2);
             const scalar gS = gK + g0 + g1 + g2 + SMALL;
 
-            // Adaptive C_T: raise threshold near discontinuities
+            // Adaptive C_T raises the threshold near discontinuities
             const scalar betaMin = min(bK, min(b0, min(b1, b2)));
             const scalar betaMax = max(bK, max(b0, max(b1, b2)));
             const scalar sigma   = (betaMax - betaMin) / (eps_ + betaMin);
             const scalar C_T_loc = C_T_ * (1.0 + 10.0 * sigma / (1.0 + sigma));
 
             // Binary cutoffs - isfinite guard catches any residual NaN from overflow.
-            // Note: g2 / gS informs tau but stencil2 is NOT used for reconstruction
+            // g2 / gS informs tau while reconstruction skips stencil2
             // (see below) - its 2nd-ring LSQ is too wide for stable corrections in SIMPLE.
             auto cutoff = [&](scalar g) -> scalar {
                 scalar r = g/gS;
@@ -175,7 +175,7 @@ teno6Scheme<Type>::correction(
                 scalar raw = (dS < SMALL) ? r0
                            : (delta0/dS)*r0 + (delta1/dS)*r1;
 
-                // Clamp to owner-neighbour range: prevents LSQ extrapolation blow-up.
+                // Clamp to the owner-neighbour range to prevent LSQ extrapolation blow-up.
                 const label o = mesh.owner()[facei];
                 const label n = mesh.neighbour()[facei];
                 const scalar vO = component(vf[o], cmpt);

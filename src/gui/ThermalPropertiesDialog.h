@@ -61,7 +61,7 @@ private:
     QDoubleSpinBox* m_as;
     QDoubleSpinBox* m_ts;
 
-    // Equation-of-state extras (rhoConst: rho, incompressiblePerfectGas: pRef)
+    // Equation-of-state extras (rho for rhoConst, pRef for incompressiblePerfectGas)
     QGroupBox*      m_eosBox;
     QDoubleSpinBox* m_rho;
     QDoubleSpinBox* m_pRef;

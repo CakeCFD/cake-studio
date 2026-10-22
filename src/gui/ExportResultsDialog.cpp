@@ -57,7 +57,7 @@ ExportResultsDialog::ExportResultsDialog(const QString& caseDir, QWidget* parent
     m_tabs = new QTabWidget;
     root->addWidget(m_tabs);
 
-    // Tab 1: Export
+    // Export tab
     auto* exportTab = new QWidget;
     auto* exportLay = new QVBoxLayout(exportTab);
     exportLay->setSpacing(8);
@@ -158,7 +158,7 @@ ExportResultsDialog::ExportResultsDialog(const QString& caseDir, QWidget* parent
 
     m_tabs->addTab(exportTab, "Export");
 
-    // Tab 2: Run History
+    // Run History tab
     auto* runsTab = new QWidget;
     auto* runsLay = new QVBoxLayout(runsTab);
     runsLay->setSpacing(8);
@@ -238,7 +238,7 @@ void ExportResultsDialog::onBrowseOutput()
     if (!dir.isEmpty()) m_outputDir->setText(dir);
 }
 
-// Returns the next auto-numbered subdirectory: <base>/export_001/, export_002/, …
+// Returns the next auto-numbered subdirectory such as <base>/export_001/
 static QString nextNumberedSubdir(const QString& base, const QString& prefix)
 {
     QDir().mkpath(base);
@@ -334,7 +334,7 @@ void ExportResultsDialog::onGenerateReports()
     for (const QString& runDir : selected) {
         RunInfo info = RunLogger::readRunInfo(runDir);
         if (info.index == 0) { ++fail; continue; }
-        // Each run gets its own numbered subfolder: report_001/, report_002/, …
+        // Each run gets its own numbered subfolder such as report_001/
         QString subDir = nextNumberedSubdir(baseDir, "report");
         QDir().mkpath(subDir);
         QString outPath = subDir + "/run_report.md";
@@ -454,7 +454,7 @@ QList<ExportResultsDialog::ResidualRow> ExportResultsDialog::parseResiduals() co
     return rows;
 }
 
-// OF 2412 force.dat / moment.dat column layout (after stripping parentheses):
+// OF 2412 force.dat / moment.dat column layout after stripping parentheses
 //   col[0]=time  col[1..3]=total  col[4..6]=pressure  col[7..9]=viscous
 static QStringList parseForceLine(const QString& raw)
 {
@@ -463,7 +463,7 @@ static QStringList parseForceLine(const QString& raw)
     return clean.split(QRegularExpression(R"(\s+)"), Qt::SkipEmptyParts);
 }
 
-// Turbulence dictionary: OF2412 ESI uses constant/turbulenceProperties,
+// OF2412 ESI keeps the turbulence dictionary in constant/turbulenceProperties,
 // newer layouts use constant/momentumTransport
 static QString turbulenceDictPath(const QString& caseDir)
 {
@@ -498,7 +498,7 @@ QList<ExportResultsDialog::ForceRow> ExportResultsDialog::parseForces() const
         if (!QFile::exists(forcePath)) forcePath = timeDir + "/force.dat";
         if (!QFile::exists(forcePath)) continue;
 
-        // moment.dat (optional: separate file in OF 2412)
+        // moment.dat, an optional separate file in OF 2412
         QString momentPath = timeDir + "/moments.dat";
         if (!QFile::exists(momentPath)) momentPath = timeDir + "/moment.dat";
         bool hasMoments = QFile::exists(momentPath);
@@ -635,7 +635,7 @@ bool ExportResultsDialog::writeReport(const QString& path,
             double ux = mv.captured(1).toDouble();
             double uz = mv.captured(3).toDouble();
             double mag = std::sqrt(ux*ux + uz*uz);
-            // Measure the angle relative to the flow axis, not to +X. On a -X case
+            // Measure the angle relative to the flow axis. On a -X case
             // atan2(0, -U) is 180 deg, which the +-90 spinbox clamps to 90, so a
             // zero-AoA run reports and then saves an AoA of 90 deg.
             double sgn = (ux < 0.0) ? -1.0 : 1.0;
@@ -689,7 +689,7 @@ bool ExportResultsDialog::writeReport(const QString& path,
     }
     o << "\n";
 
-    // Thermal section: only for solvers that use thermophysicalProperties
+    // Thermal section, only for solvers that use thermophysicalProperties
     static const QSet<QString> THERMAL_SOLVERS = {
         "buoyantSimpleFoam", "buoyantPimpleFoam", "rhoSimpleFoam", "rhoCentralFoam"
     };
@@ -793,7 +793,7 @@ bool ExportResultsDialog::writeReport(const QString& path,
             }
         }
 
-        // Mach number: from thermophysicalProperties if available
+        // Mach number from thermophysicalProperties if available
         QString tpPath = m_caseDir + "/constant/thermophysicalProperties";
         QString cpStr  = readDictValue(tpPath, "Cp");
         QString mwStr  = readDictValue(tpPath, "molWeight");
@@ -971,7 +971,7 @@ void ExportResultsDialog::loadCakeProperties()
                 double uz = mv.captured(3).toDouble();
                 double mag = std::sqrt(ux*ux + uz*uz);
                 if (mag > 1e-12) {
-                    // Relative to the flow axis: see the matching note above - a -X
+                    // Relative to the flow axis as noted above, since a -X
                     // case would otherwise detect 180 deg and clamp to 90.
                     double sgn = (ux < 0.0) ? -1.0 : 1.0;
                     double detected = std::atan2(sgn*uz, sgn*ux) * 180.0 / M_PI;
@@ -995,7 +995,7 @@ void ExportResultsDialog::saveCakeProperties() const
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return;
     QTextStream o(&f);
     o.setCodec(QTextCodec::codecForName("UTF-8"));
-    o << "// Cake Studio reference quantities: used for Re, Cd, Cl, Cm in reports\n\n";
+    o << "// Cake Studio reference quantities used for Re, Cd, Cl, Cm in reports\n\n";
     o << "rho   " << m_spRho ->value() << ";\n";
     o << "Aref  " << m_spAref->value() << ";\n";
     o << "Lref  " << m_spLref->value() << ";\n";

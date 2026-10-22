@@ -27,7 +27,7 @@ namespace Foam
 {
 
 // TENO scheme using the TenoStencilCache (LSQ-based, cache-friendly).
-// Implements the two-level TENO reconstruction of Fu et al. 2016:
+// Implements the two-level TENO reconstruction of Fu et al. 2016
 //   1. Try wide central stencil S_K (smooth → optimal accuracy).
 //   2. Fall back to per-component TENO blend of S_0 / S_1 (near discontinuities).
 // Smoothness indicators computed per field component (fixes vector-field bug).

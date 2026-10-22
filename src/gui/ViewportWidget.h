@@ -35,13 +35,18 @@
 #include <vtkConeSource.h>
 #include <vtkActor.h>
 #include <QVTKOpenGLStereoWidget.h>
+#include <QElapsedTimer>
+#include <memory>
+#include <string>
+#include "FlowParticles.h"
 class QTimer;
+class vtkPolyData;
 
 class QComboBox;
 class QSlider;
 class QLabel;
 
-// Small horizontal colorbar drawn purely in Qt: lives in the toolbar
+// Small horizontal colorbar drawn purely in Qt for the toolbar
 class ColorBarWidget : public QWidget {
     Q_OBJECT
 public:
@@ -95,7 +100,7 @@ public:
     void setBackgroundColor(double r, double g, double b);
     void setTheme(Theme t);
 
-    // Live domain preview: wireframe box + flow direction cone
+    // Live domain preview wireframe box and flow direction cone
     void updateDomainPreview(double x0, double y0, double z0,
                              double x1, double y1, double z1,
                              const QString& flowAxis);
@@ -114,7 +119,7 @@ public:
     void        setProjectDir(const QString& dir) { m_projectDir = dir; }
     void        setSliderMax(int endTime);  // called when steps spinbox Apply is clicked
 
-    // Stream settings: getters for project save, setters for project restore
+    // Stream settings getters for project save, setters for project restore
     double streamProximity() const  { return m_streamProximity; }
     int    streamDensity()   const  { return m_streamDensity;   }
     double streamTubeScale() const  { return m_streamTubeScale; }
@@ -125,7 +130,7 @@ public:
 signals:
     void streamlinesDiverged();  // emitted when velocity field is blown up
     // Emitted when the loaded results were solved on a different axis than the one
-    // configured in Domain Setup: the case needs re-solving before streamlines mean anything.
+    // configured in Domain Setup, so the case needs re-solving.
     void streamlinesAxisMismatch(const QString& configured, const QString& actual);
 
 protected:
@@ -165,7 +170,7 @@ private:
     // OF results state
     QString      m_caseDir;
     QString      m_projectDir; // set by MainWindow; used to copy dropped geometry
-    QString      m_stlPath;   // last STL loaded: persisted in .cake
+    QString      m_stlPath;   // last STL loaded, persisted in .cake
     QStringList  m_timeSteps;
     QStringList  m_availableFields;
 
@@ -180,6 +185,7 @@ private:
     QPushButton*    m_btnEdges      = nullptr;
     QPushButton*    m_btnIso        = nullptr;
     QPushButton*    m_btnStream     = nullptr;
+    QPushButton*    m_btnParticles  = nullptr;
 
     // Iso-surface + streamline actors
     vtkSmartPointer<vtkActor> m_isoActor;
@@ -187,7 +193,7 @@ private:
 
     // Cached dataset for post-processing overlays
     vtkSmartPointer<vtkDataSet> m_lastDataSet;
-    // Volumetric internal mesh: needed for streamline integration
+    // Volumetric internal mesh for streamline integration
     vtkSmartPointer<vtkDataSet> m_volumeDataSet;
     // Cached cell->point interpolation of m_volumeDataSet. Rebuilding this on every
     // Flow toggle re-interpolates the whole volume; it only changes when the volume
@@ -195,14 +201,25 @@ private:
     vtkSmartPointer<vtkDataSet> m_streamPointCache;
     int  m_lastTimeStepIndex    = 0;
     double  m_inletSpeed           = 0.0;  // m/s, cached from 0/U
-    QString m_flowAxis             = "+X"; // flow direction for seeds: set from DomainSetupDialog
+    QString m_flowAxis             = "+X"; // seed flow direction set from DomainSetupDialog
 
     // Streamline display settings
     double m_streamProximity  = 0.10;  // seed padding as fraction of aircraft bbox
     int    m_streamDensity    = 256;   // total seed count (resY * resZ); res = sqrt(this)
     double m_streamTubeScale  = 1.0;   // multiplier on default tube radius (0.00025 * domLen)
 
+    // Last traced streamlines, reused by the particle animation
+    vtkSmartPointer<vtkPolyData>    m_streamPaths;
+    vtkSmartPointer<vtkLookupTable> m_streamLut;
+    std::string                     m_streamVelName;
+
+    std::unique_ptr<FlowParticles> m_particles;
+    QTimer*        m_particleTimer = nullptr;
+    QElapsedTimer  m_particleClock;
+
     void toggleIsoSurface(bool on);
     void toggleStreamlines(bool on);
+    void toggleParticles(bool on);
+    void stopParticles();
     void showStreamSettings();
 };

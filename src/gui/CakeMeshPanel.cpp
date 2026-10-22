@@ -64,8 +64,8 @@ CakeMeshPanel::CakeMeshPanel(QWidget* parent) : QWidget(parent)
             this, &CakeMeshPanel::onProcessOutput);
     connect(m_process, QOverload<int,QProcess::ExitStatus>::of(&QProcess::finished),
             this, &CakeMeshPanel::onProcessFinished);
-    // finished() never fires when bash cannot be started: fail the queue here so
-    // the panel does not stay stuck in the running state
+    // finished() never fires when bash cannot be started, so fail the queue here and
+    // the panel leaves the running state
     connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError err) {
         if (err != QProcess::FailedToStart) return;  // other errors still emit finished()
         log("  [FAILED] could not start bash: " + m_process->errorString());
@@ -90,7 +90,7 @@ CakeMeshPanel::CakeMeshPanel(QWidget* parent) : QWidget(parent)
     m_log->setFont(QFont("Monospace", 9));
     root->addWidget(m_log);
 
-    // Action bar: Generate → Run Mesh → Export to Cake Studio
+    // Action bar with Generate → Run Mesh → Export to Cake Studio
     m_status      = new QLabel("Ready.");
     m_btnGenerate = new QPushButton("Generate Case");
     m_btnRunMesh  = new QPushButton("Run Mesh");
@@ -211,7 +211,7 @@ QJsonObject CakeMeshPanel::getState() const
 
 void CakeMeshPanel::setState(const QJsonObject& o)
 {
-    // Geometry: set path then defer the viewport load so VTK's OpenGL context
+    // Set the geometry path, then defer the viewport load so VTK's OpenGL context
     // is guaranteed to be initialized before we call Render().
     if (o.contains("geo_path") && m_geoPath) {
         m_geoPath->setText(o["geo_path"].toString());
@@ -240,8 +240,7 @@ void CakeMeshPanel::setState(const QJsonObject& o)
     if (o.contains("cores")      && m_cores)       m_cores->setValue(o["cores"].toInt());
     if (o.contains("case_dir")) {
         m_caseDir = o["case_dir"].toString();
-        // Gate on a case having actually been written, not merely on the output
-        // directory existing, and unlock Export only once a mesh is on disk.
+        // Gate on a written case with a mesh on disk before unlocking Export.
         bool haveCase = !m_caseDir.isEmpty() &&
                         QFile::exists(m_caseDir + "/system/blockMeshDict");
         if (m_btnRunMesh) m_btnRunMesh->setEnabled(haveCase);
@@ -265,7 +264,7 @@ void CakeMeshPanel::reset()
     if (m_btnExport)  m_btnExport->setEnabled(false);
     if (m_btnGenerate) m_btnGenerate->setEnabled(true);
     m_geo.reset();
-    // Rebuild the BC table too: otherwise the previous project's patch rows and its
+    // Rebuild the BC table too, or the previous project's patch rows and its
     // geometry patch name survive into the new project.
     if (m_bcTable) buildBCTable();
 }
@@ -447,18 +446,15 @@ void CakeMeshPanel::buildBCTable()
         "Symmetry", "Slip", "Zero Gradient"
     };
 
-    // NOTE: do not call setStyleSheet() on the cell widgets below. ThemeEngine applies
-    // an application-wide stylesheet that already styles QComboBox/QLineEdit for the
-    // active theme, and a widget-level stylesheet overrides the application one - so
-    // styling them here disconnects them from the theme instead of theming them.
-    // Size them with setFont() and setFrame() only, and let the global sheet paint.
+    // Never call setStyleSheet() on these cell widgets because it detaches them from the global theme.
+    // Size them with setFont() and setFrame() only.
     auto shrinkFont = [](QWidget* w) {
         QFont f = w->font();
         f.setPointSize(8);
         w->setFont(f);
     };
 
-    // Separator and geometry rows take their tints from the active theme
+    // Rows share the table background; the separator only mutes its text
     const ThemeColors& tc = ThemeEngine::instance().colors();
 
     struct RowDef { QString name; int typeIdx; bool showValue; double defaultVal; };
@@ -489,7 +485,6 @@ void CakeMeshPanel::buildBCTable()
             auto* sep = new QTableWidgetItem(" Geometry Surfaces ");
             sep->setFlags(Qt::ItemIsEnabled);
             sep->setTextAlignment(Qt::AlignCenter);
-            sep->setBackground(tc.raised);
             sep->setForeground(tc.textMuted);
             m_bcTable->setItem(row, 0, sep);
             m_bcTable->setSpan(row, 0, 1, 3);
@@ -497,27 +492,19 @@ void CakeMeshPanel::buildBCTable()
             return;
         }
 
-        // Geometry row: a faint lift off the table background
-        const QColor geoBg = tc.panel;
-        const QColor geoFg = tc.text;
-
-        // Col 0: patch name
+        // Column 0 holds the patch name
         auto* nameItem = new QTableWidgetItem(patchName);
         nameItem->setFlags(Qt::ItemIsEnabled);
         nameItem->setFont([&]{ QFont f; f.setFamily("Monospace"); f.setPointSize(9); return f; }());
-        if (isGeometry) {
-            nameItem->setBackground(geoBg);
-            nameItem->setForeground(geoFg);
-        }
         m_bcTable->setItem(row, 0, nameItem);
 
-        // Col 1: type combo
+        // Column 1 holds the type combo
         auto* combo = new QComboBox;
         combo->addItems(kTypes);
         combo->setCurrentIndex(typeIdx);
         shrinkFont(combo);
 
-        // Col 2: value edit
+        // Column 2 holds the value edit
         auto* valEdit = new QLineEdit(valueEditable ? QString::number(value) : "-");
         valEdit->setEnabled(valueEditable);
         valEdit->setAlignment(Qt::AlignRight);
@@ -808,5 +795,5 @@ void CakeMeshPanel::setRunning(bool on)
 {
     m_btnGenerate->setEnabled(!on);
     m_btnRunMesh->setEnabled(!on && !m_caseDir.isEmpty());
-    // Export stays as-is: only enabled after successful mesh
+    // Export stays as-is and only unlocks after a successful mesh
 }

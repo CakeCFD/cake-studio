@@ -139,7 +139,7 @@ void PropertiesPanel::initContainer()
     m_vlay = new QVBoxLayout(w);
     m_vlay->setContentsMargins(10, 8, 10, 8);
     m_vlay->setSpacing(0);
-    m_vlay->addStretch(1);  // trailing stretch: addSection inserts before this
+    m_vlay->addStretch(1);  // trailing stretch, addSection inserts before this
 
     m_scroll->setWidget(w);
     m_content = w;
@@ -607,7 +607,7 @@ void PropertiesPanel::populateDict(const QString& path)
             auto m = it.next();
             QString key = "div(" + m.captured(1) + ")";
             QString val = m.captured(2).simplified();
-            // Inline edit: write back the whole div entry
+            // Inline edit writes back the whole div entry
             addEditableRow(key, val, [path, key, val](const QString& v){
                 QFile f(path);
                 if (!f.open(QIODevice::ReadOnly)) return;
@@ -671,7 +671,7 @@ void PropertiesPanel::populateDict(const QString& path)
         }
 
     } else {
-        // Generic: show top-level key-value pairs as editable
+        // Generic fallback shows top-level key-value pairs as editable
         addSection("Contents");
         QRegularExpression kvRe(R"(^\s{0,4}(\w+)\s+([^\s{;][^;]*);)",
                                 QRegularExpression::MultilineOption);

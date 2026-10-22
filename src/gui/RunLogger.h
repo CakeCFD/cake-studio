@@ -56,9 +56,9 @@ struct RunInfo {
 
 class RunLogger {
 public:
-    // Call just before solver starts: snapshots inputs, returns run directory path
+    // Call just before the solver starts. Snapshots inputs and returns the run directory
     static QString        startRun(const QString& caseDir, const QString& solver);
-    // Call after solver exits: writes results CSV, metadata.json, run_report.md.
+    // Call after the solver exits to write results CSV, metadata.json and run_report.md.
     // stopped marks a run the user interrupted (kept, but flagged in metadata).
     static void           finishRun(const QString& runDir, const QString& caseDir, bool converged,
                                     bool stopped = false);

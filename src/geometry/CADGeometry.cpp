@@ -32,7 +32,7 @@ std::unique_ptr<CADGeometry> CADGeometry::fromFile(
 {
     auto geo = std::make_unique<CADGeometry>();
 
-    // STL: load directly via VTK: no OCCT pipeline needed
+    // STL loads directly through VTK without the OCCT pipeline
     if (QFileInfo(path).suffix().toLower() == "stl") {
         auto reader = vtkSmartPointer<vtkSTLReader>::New();
         reader->SetFileName(path.toStdString().c_str());
@@ -47,7 +47,7 @@ std::unique_ptr<CADGeometry> CADGeometry::fromFile(
         return geo;
     }
 
-    // CAD formats (STEP, IGES, BREP): go through OCCT + tessellator
+    // CAD formats (STEP, IGES, BREP) go through OCCT and the tessellator
     geo->m_result = CADImporter::load(path);
     if (!geo->m_result.success) return geo;
 

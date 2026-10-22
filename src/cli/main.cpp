@@ -157,7 +157,7 @@ int main(int argc, char* argv[])
     // BlockMeshWriter puts the inlet on X-max, so the flow runs in -X
     cp.flowAxis        = "-X";
 
-    // snappyHexMesh controls from the mesh: section
+    // snappyHexMesh controls from the mesh section
     cp.maxGlobalCells       = cfg.maxGlobalCells;
     cp.maxLocalCells        = cfg.maxLocalCells;
     cp.surfaceRefinementMin = cfg.surfaceRefinementMin;

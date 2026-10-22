@@ -89,7 +89,7 @@ bool BlockMeshWriter::write(const QString& caseDir, const BlockMeshParams& p)
         << ") simpleGrading (1 1 1)\n);\n\n"
         << "edges ();\n\n"
         << "boundary\n(\n"
-        // V1 flow is -X: inlet must be the X-max face (1 2 6 5) so the inlet
+        // V1 flow is -X, so the inlet must be the X-max face (1 2 6 5) and the inlet
         // velocity (-U 0 0) points INTO the domain. Keep in sync with
         // DomainSetupDialog's -X mapping, or phi leaves through the inlet and
         // the compressible solvers abort on negative temperature.

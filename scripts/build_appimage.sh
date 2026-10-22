@@ -1,8 +1,3 @@
-#!/bin/bash
-# Build CakeCFD AppImage
-# Usage: ./scripts/build_appimage.sh [--release]
-# Requires: cmake build already done, or pass --build to rebuild first
-
 set -e
 cd "$(dirname "$0")/.."
 

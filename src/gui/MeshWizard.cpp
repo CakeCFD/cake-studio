@@ -402,7 +402,7 @@ bool MeshWizard::runCommand(const QString& cmd)
 {
     QProcess proc;
     proc.setProcessChannelMode(QProcess::MergedChannels);
-    // Pass the command as a single argv entry: QProcess::start(QString) splits
+    // Pass the command as a single argv entry because QProcess::start(QString) splits
     // on whitespace and only honours double quotes, which breaks bash -c '...'.
     proc.start("bash", { "-c", cmd });
     if (!proc.waitForStarted(5000)) {

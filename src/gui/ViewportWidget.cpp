@@ -137,7 +137,7 @@ void ViewportWidget::dropEvent(QDropEvent* e)
 }
 
 // The QVTKOpenGLNativeWidget child fills the entire visible area, so drag events
-// land on it, not on this parent widget. Forward them here.
+// land on it. Forward them here.
 bool ViewportWidget::eventFilter(QObject* obj, QEvent* event)
 {
     if (obj == m_vtkHost && m_vtkWidget && event->type() == QEvent::Resize) {
@@ -181,7 +181,7 @@ void ViewportWidget::setupPipeline() {
         m_vtkWidget->setGeometry(m_vtkHost->rect());
     });
 
-    // Native-window view: a QOpenGLWidget makes Qt composite the whole UI through GL
+    // Native-window view, because a QOpenGLWidget makes Qt composite the whole UI through GL
     m_vtkWidget = new QVTKOpenGLStereoWidget(m_vtkHost);
     m_vtkWidget->setAcceptDrops(true);
     m_vtkWidget->installEventFilter(this);
@@ -200,7 +200,7 @@ void ViewportWidget::setupPipeline() {
     m_vtkWidget->interactor()->SetDesiredUpdateRate(10.0);
     m_vtkWidget->interactor()->SetStillUpdateRate(0.5);
     renderWindow->SetDesiredUpdateRate(10.0);
-    renderWindow->SetMultiSamples(0);  // disable MSAA: reduces framebuffer bandwidth on WSLg
+    renderWindow->SetMultiSamples(0);  // MSAA off reduces framebuffer bandwidth on WSLg
 
     auto axes = vtkSmartPointer<vtkAxesActor>::New();
     m_axesWidget = vtkSmartPointer<vtkOrientationMarkerWidget>::New();
@@ -210,7 +210,7 @@ void ViewportWidget::setupPipeline() {
     m_axesWidget->SetEnabled(1);
     m_axesWidget->InteractiveOff();
 
-    // Lookup table: cool-to-warm (blue → red)
+    // Cool-to-warm lookup table (blue → red)
     m_lut = vtkSmartPointer<vtkLookupTable>::New();
     m_lut->SetHueRange(0.667, 0.0);
     m_lut->SetNumberOfTableValues(256);
@@ -232,8 +232,18 @@ void ViewportWidget::setupPipeline() {
     m_renderer->AddActor(m_domainActor);
     m_renderer->AddActor(m_isoActor);
     m_renderer->AddActor(m_streamActor);
+    m_particles = std::make_unique<FlowParticles>();
+    m_renderer->AddActor(m_particles->actor());
+    m_particleTimer = new QTimer(this);
+    m_particleTimer->setInterval(33);
+    connect(m_particleTimer, &QTimer::timeout, this, [this]() {
+        double dt = std::min(m_particleClock.restart() / 1000.0, 0.1);
+        if (!isVisible() || m_particles->empty()) return;
+        m_particles->advance(dt);
+        m_vtkWidget->renderWindow()->Render();
+    });
 
-    // Live domain preview: wireframe box
+    // Live domain preview wireframe box
     m_domainCubeSource = vtkSmartPointer<vtkCubeSource>::New();
     auto cubeMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     cubeMapper->SetInputConnection(m_domainCubeSource->GetOutputPort());
@@ -246,7 +256,7 @@ void ViewportWidget::setupPipeline() {
     m_domainPreviewActor->SetVisibility(0);
     m_renderer->AddActor(m_domainPreviewActor);
 
-    // Live domain preview: flow direction cone (green, points in flow direction)
+    // Live domain preview cone, green and pointing along the flow
     m_flowConeSource = vtkSmartPointer<vtkConeSource>::New();
     m_flowConeSource->SetResolution(16);
     auto coneMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
@@ -300,7 +310,7 @@ void ViewportWidget::setupResultsToolbar() {
         m_vtkWidget->renderWindow()->Render();
     });
 
-    // Edge visibility toggle: default off (expensive on dense meshes)
+    // Edge visibility toggle, off by default (expensive on dense meshes)
     m_btnEdges = new QPushButton("Edges");
     m_btnEdges->setCheckable(true);
     m_btnEdges->setChecked(false);
@@ -315,7 +325,7 @@ void ViewportWidget::setupResultsToolbar() {
         m_vtkWidget->renderWindow()->Render();
     });
 
-    // CFD wall mesh wireframe overlay: shows actual computational cell faces on surface
+    // Wall mesh wireframe overlay showing the computational cell faces on the surface
     auto* btnCells = new QPushButton("Cells");
     btnCells->setCheckable(true);
     btnCells->setFixedWidth(48);
@@ -352,10 +362,19 @@ void ViewportWidget::setupResultsToolbar() {
 
     auto* btnStreamCfg = new QPushButton("⚙");
     btnStreamCfg->setFixedWidth(22);
-    btnStreamCfg->setToolTip("Streamline settings: proximity, density");
+    btnStreamCfg->setToolTip("Streamline and particle settings");
     btnStreamCfg->setStyleSheet("QPushButton { font-size: 11px; padding: 1px 2px; }");
     barLayout->addWidget(btnStreamCfg);
     connect(btnStreamCfg, &QPushButton::clicked, this, &ViewportWidget::showStreamSettings);
+
+    m_btnParticles = new QPushButton("Particles");
+    m_btnParticles->setCheckable(true);
+    m_btnParticles->setFixedWidth(64);
+    m_btnParticles->setToolTip("Animate particles moving with the flow");
+    m_btnParticles->setStyleSheet("QPushButton { font-size: 11px; padding: 2px 4px; }");
+    ThemeEngine::setRole(m_btnParticles, "toggle");
+    barLayout->addWidget(m_btnParticles);
+    connect(m_btnParticles, &QPushButton::toggled, this, &ViewportWidget::toggleParticles);
 
     barLayout->addStretch();
 
@@ -370,7 +389,7 @@ void ViewportWidget::setupResultsToolbar() {
 
     connect(m_fieldCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &ViewportWidget::onFieldChanged);
-    // Only re-render on release: avoids triggering the full VTK pipeline on
+    // Only re-render on release to avoid running the full VTK pipeline on
     // every drag tick (which causes multi-second freezes on large meshes).
     connect(m_timeSlider, &QSlider::sliderReleased, this, [this](){
         onTimeStepChanged(m_timeSlider->value());
@@ -423,6 +442,7 @@ void ViewportWidget::clearMeshData()
     if (m_btnHideMesh) { m_btnHideMesh->setChecked(false); m_btnHideMesh->setText("Hide Mesh"); }
     if (m_btnIso)    { m_btnIso->setChecked(false); }
     if (m_btnStream) { m_btnStream->setChecked(false); }
+    stopParticles();
     m_isoActor->VisibilityOff();
     m_streamActor->VisibilityOff();
     m_lastDataSet = nullptr;
@@ -442,7 +462,7 @@ void ViewportWidget::toggleIsoSurface(bool on)
 {
     m_isoActor->SetVisibility(on ? 1 : 0);
 
-    // Lazy-load the volumetric mesh: same logic as toggleStreamlines.
+    // Lazy-load the volumetric mesh with the same logic as toggleStreamlines.
     // Without this, clicking Iso before Flow always sees m_volumeDataSet == null.
     if (on && !m_volumeDataSet && !m_caseDir.isEmpty() && !m_timeSteps.isEmpty()) {
         QString foamFile = m_caseDir + "/case.foam";
@@ -484,7 +504,7 @@ void ViewportWidget::toggleIsoSurface(bool on)
     if (on && m_volumeDataSet) {
         QString field = m_fieldCombo ? m_fieldCombo->currentText() : QString();
 
-        // OF data is cell-centred: convert to point data for vtkContourFilter
+        // OF data is cell-centred, so convert to point data for vtkContourFilter
         auto c2p = vtkSmartPointer<vtkCellDataToPointData>::New();
         c2p->SetInputDataObject(m_volumeDataSet);
         c2p->PassCellDataOn();
@@ -515,8 +535,8 @@ void ViewportWidget::toggleIsoSurface(bool on)
         arr->GetRange(range);
         if (range[0] >= range[1] - 1e-10) { m_isoActor->SetVisibility(0); m_vtkWidget->renderWindow()->Render(); return; }
 
-        // Iso at 30% of range: for pressure this captures the suction surface,
-        // for |U| it captures the boundary layer edge.
+        // Iso at 30% of range captures the suction surface for pressure
+        // and the boundary layer edge for |U|.
         double isoVal = range[0] + (range[1] - range[0]) * 0.3;
 
         auto contour = vtkSmartPointer<vtkContourFilter>::New();
@@ -542,14 +562,16 @@ void ViewportWidget::toggleStreamlines(bool on)
         auto emptyMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         emptyMapper->SetInputData(vtkSmartPointer<vtkPolyData>::New());
         m_streamActor->SetMapper(emptyMapper);
+        m_streamPaths = nullptr;
     }
-    m_streamActor->SetVisibility(on ? 1 : 0);
+    // Particles can trace with Flow off, so only show lines when Flow is checked
+    m_streamActor->SetVisibility(on && m_btnStream && m_btnStream->isChecked() ? 1 : 0);
     if (on && m_caseDir.isEmpty()) {
         m_streamActor->SetVisibility(0);
         m_vtkWidget->renderWindow()->Render();
         return;
     }
-    // Lazy-load the volumetric internal mesh: only done here, not in applyField,
+    // Lazy-load the volumetric internal mesh here only,
     // because loading millions of cells on every field/step change kills performance.
     if (on && !m_volumeDataSet && !m_caseDir.isEmpty() && !m_timeSteps.isEmpty()) {
         QString foamFile = m_caseDir + "/case.foam";
@@ -593,7 +615,7 @@ void ViewportWidget::toggleStreamlines(bool on)
         }
     }
     if (on && m_volumeDataSet) {
-        // OF fields are cell-centred: convert to point data for vtkStreamTracer.
+        // OF fields are cell-centred, so convert to point data for vtkStreamTracer.
         // Cached - this is the single most expensive step and the result only
         // changes when m_volumeDataSet is reloaded.
         if (!m_streamPointCache) {
@@ -607,7 +629,7 @@ void ViewportWidget::toggleStreamlines(bool on)
         }
         vtkSmartPointer<vtkDataSet> pd = m_streamPointCache;
 
-        // Find velocity array: check point data first (after c2p), then cell data fallback
+        // Find the velocity array in point data first (after c2p), then cell data
         vtkDataArray* velArr = nullptr;
         const char* velName  = nullptr;
         for (const char* name : {"U", "velocity", "Velocity", "u"}) {
@@ -619,7 +641,7 @@ void ViewportWidget::toggleStreamlines(bool on)
             velArr = nullptr;
         }
         if (!velArr) {
-            // Last resort: any 3-component array in the dataset
+            // Last resort is any 3-component array in the dataset
             auto* pd2 = pd->GetPointData();
             for (int i = 0; pd2 && i < pd2->GetNumberOfArrays(); ++i) {
                 auto* a = pd2->GetArray(i);
@@ -633,8 +655,7 @@ void ViewportWidget::toggleStreamlines(bool on)
             return;
         }
 
-        // Divergence guard: if the velocity magnitude exceeds a physical limit
-        // (incompressible RANS: Mach ~0.3 max ≈ 100 m/s; give 10× headroom)
+        // Divergence guard. Past 1e4 m/s (10x headroom over incompressible Mach 0.3)
         // the run has blown up. Refuse to trace streamlines into garbage data.
         {
             double vRange[2];
@@ -655,19 +676,19 @@ void ViewportWidget::toggleStreamlines(bool on)
         pd->GetBounds(bounds);
         double domLen = bounds[1] - bounds[0];
 
-        // Aircraft surface bounds: used to size seed plane around the aircraft
+        // Aircraft surface bounds size the seed plane around the aircraft
         double surf[6] = {bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5]};
         if (m_lastDataSet) m_lastDataSet->GetBounds(surf);
 
-        // Seed plane: upstream inlet face, sized to aircraft Y-Z footprint + proximity margin.
+        // Seed plane on the upstream inlet face, sized to the aircraft Y-Z footprint plus margin.
         // Using domain-sized seed planes wastes almost all seeds on freestream far from aircraft.
         double aircraftH = surf[3] - surf[2];  // Y span of aircraft
         double aircraftW = surf[5] - surf[4];  // Z span of aircraft
         double padY = aircraftH * m_streamProximity;
         double padZ = aircraftW * m_streamProximity;
 
-        // Detect actual flow direction from the solved field rather than trusting
-        // the configured axis: average U_x over a sample of points. Positive mean
+        // Detect the flow direction from the mean U_x of the solved field.
+        // Positive mean
         // → flow runs +X, so the inlet is the x-min face; negative → x-max face.
         double meanUx = 0.0;
         {
@@ -680,13 +701,13 @@ void ViewportWidget::toggleStreamlines(bool on)
             }
             if (cnt) meanUx /= cnt;
         }
-        // Dead band: the raw mean includes the stagnant far field, the wake and the
+        // Dead band, because the raw mean includes the stagnant far field, the wake and the
         // no-slip body, so a bare "< 0" test flips the seed face at random on cases
         // whose mean U_x sits near zero. Require a clear fraction of freestream.
         double uRef = (m_inletSpeed > 1e-6) ? m_inletSpeed : std::fabs(meanUx);
         double sX = (meanUx < -0.05 * uRef)
-            ? bounds[1] - domLen * 0.04    // -X flow: inlet is the x-max face
-            : bounds[0] + domLen * 0.04;   // +X flow: inlet is the x-min face
+            ? bounds[1] - domLen * 0.04    // -X flow has its inlet on the x-max face
+            : bounds[0] + domLen * 0.04;   // +X flow has its inlet on the x-min face
         double sY0 = surf[2] - padY;
         double sY1 = surf[3] + padY;
         double sZ0 = surf[4] - padZ;
@@ -707,7 +728,7 @@ void ViewportWidget::toggleStreamlines(bool on)
         planeUp->SetResolution(res, res);
         planeUp->Update();
 
-        // Center-plane seeds: a vertical line at the aircraft's Z midpoint so
+        // Center-plane seeds on a vertical line at the aircraft's Z midpoint so
         // streamlines pass through the symmetry plane over/under the body
         double zCenter = 0.5 * (surf[4] + surf[5]);
         auto lineCenter = vtkSmartPointer<vtkLineSource>::New();
@@ -741,7 +762,7 @@ void ViewportWidget::toggleStreamlines(bool on)
         // truncates every line at the same distance from the seed plane.
         tracer->SetMaximumNumberOfSteps(50000);
         // Stop lines that stagnate (separation bubbles, near-wall recirculation).
-        // Must be a fraction of the INLET speed, never of the field max: on a diverged
+        // Use a fraction of the inlet speed because on a diverged
         // run the max can be 20x freestream, putting the threshold above freestream
         // and killing every line at its seed point.
         // 0.5% of freestream kills lines the moment they reach slow wake fluid, so the
@@ -749,7 +770,7 @@ void ViewportWidget::toggleStreamlines(bool on)
         // push through the velocity deficit and trace the wake.
         tracer->SetTerminalSpeed(m_inletSpeed > 1e-6 ? m_inletSpeed * 1e-4 : 1e-6);
 
-        // Velocity range: 0 (stagnation) → U_inf (free stream)
+        // Velocity range from 0 (stagnation) to U_inf (free stream)
         double velRange[2] = {0.0, 1.0};
         velArr->GetRange(velRange, -1);
         {
@@ -782,18 +803,16 @@ void ViewportWidget::toggleStreamlines(bool on)
         streamLut->SetHueRange(0.0, 0.667);
         streamLut->SetSaturationRange(1.0, 1.0);
         streamLut->SetValueRange(1.0, 1.0);
-        // U is a 3-component array: colour by |U|, not by component 0. On -X flow
+        // Colour by |U| because on -X flow component 0
         // Ux is negative, falls below the [0, U_inf] range and clamps every line
         // to the bottom of the table, painting the whole field one colour.
         streamLut->SetVectorModeToMagnitude();
         streamLut->Build();
 
-        // A vtkPolyDataConnectivityFilter used to run here purely as a side effect to
-        // force the tracer to execute; its output was never read. Update the tracer
-        // directly instead and skip a full connectivity pass over every streamline.
+        // Update the tracer directly, which skips a full connectivity pass over every streamline
         tracer->Update();
 
-        // Post-filters disabled: every traced line is rendered as-is. Previously two
+        // Every traced line renders as-is. Previously two
         // filters dropped whole streamlines - arc length < 5% of the domain diagonal,
         // and net displacement / arc length < 0.08 ("looping spiral") - which removed
         // legitimate lines that slowed or curved tightly around the body and made the
@@ -801,7 +820,7 @@ void ViewportWidget::toggleStreamlines(bool on)
         auto tracerOut = vtkSmartPointer<vtkPolyData>::New();
         tracerOut->ShallowCopy(tracer->GetOutput());
 
-        // Render as thick lines: same visual result as tubes at 1/50th the geometry cost.
+        // Thick lines look like tubes at 1/50th the geometry cost.
         // vtkTubeFilter at 128 seeds × 3000 steps × 4 sides ≈ 1.5M triangles; lines ≈ 0.
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         mapper->SetInputData(tracerOut);
@@ -814,7 +833,38 @@ void ViewportWidget::toggleStreamlines(bool on)
         m_streamActor->SetMapper(mapper);
         m_streamActor->GetProperty()->SetLineWidth(1.8f * static_cast<float>(m_streamTubeScale));
         m_streamActor->GetProperty()->SetOpacity(0.9);
+
+        m_streamPaths   = tracerOut;
+        m_streamLut     = streamLut;
+        m_streamVelName = velName;
+        if (m_btnParticles && m_btnParticles->isChecked()
+            && !m_particles->setPaths(m_streamPaths, velName, m_streamLut))
+            stopParticles();
     }
+    m_vtkWidget->renderWindow()->Render();
+}
+
+void ViewportWidget::toggleParticles(bool on)
+{
+    if (!on) { stopParticles(); return; }
+    if (!m_streamPaths) toggleStreamlines(true);
+    if (!m_streamPaths || !m_particles->setPaths(m_streamPaths, m_streamVelName.c_str(), m_streamLut)) {
+        stopParticles();
+        return;
+    }
+    m_particles->actor()->SetVisibility(1);
+    m_particleClock.start();
+    m_particleTimer->start();
+    m_vtkWidget->renderWindow()->Render();
+}
+
+void ViewportWidget::stopParticles()
+{
+    if (m_btnParticles) { QSignalBlocker b(m_btnParticles); m_btnParticles->setChecked(false); }
+    if (m_particleTimer) m_particleTimer->stop();
+    if (!m_particles) return;
+    m_particles->actor()->SetVisibility(0);
+    m_particles->clear();
     m_vtkWidget->renderWindow()->Render();
 }
 
@@ -893,7 +943,7 @@ void ViewportWidget::loadOBJ(const QString& path) {
     mapper->StaticOn();
 
     m_meshActor->SetMapper(mapper);
-    m_meshActor->SetVisibility(1);   // see loadSTL: clearMeshData() left it off
+    m_meshActor->SetVisibility(1);   // see loadSTL, clearMeshData() left it off
     m_meshActor->GetProperty()->SetColor(0.6, 0.75, 0.9);
     m_meshActor->GetProperty()->EdgeVisibilityOff();
     m_meshActor->GetProperty()->BackfaceCullingOn();
@@ -939,7 +989,7 @@ void ViewportWidget::loadOFResults(const QString& caseDir)
     std::sort(timeSteps.begin(), timeSteps.end(),
               [](const QString& a, const QString& b){ return a.toDouble() < b.toDouble(); });
     if (caseChanged || timeSteps.isEmpty()) {
-        // Drop the previous case's results: m_timeSteps indices and the cached
+        // Drop the previous case's results because m_timeSteps indices and the cached
         // datasets would otherwise point at another case's (or deleted) time dirs
         m_resultActor->VisibilityOff();
         m_isoActor->VisibilityOff();
@@ -954,6 +1004,8 @@ void ViewportWidget::loadOFResults(const QString& caseDir)
         if (m_timeLabel)   m_timeLabel->setText("-");
         if (m_btnIso)      { QSignalBlocker b(m_btnIso);    m_btnIso->setChecked(false); }
         if (m_btnStream)   { QSignalBlocker b(m_btnStream); m_btnStream->setChecked(false); }
+        m_streamPaths = nullptr;
+        stopParticles();
         if (m_colorBar)    m_colorBar->setVisible(false);
         if (m_fieldLabel)  m_fieldLabel->setText("-");
     }
@@ -964,7 +1016,7 @@ void ViewportWidget::loadOFResults(const QString& caseDir)
     m_timeSteps = timeSteps;
 
     // Touch the .foam file so vtkOpenFOAMReader sees a new mtime and re-reads all
-    // time directories: otherwise VTK caches the old time set between runs.
+    // time directories, or VTK caches the old time set between runs.
     QString foamFile = caseDir + "/case.foam";
     {
         QFile f(foamFile);
@@ -1012,7 +1064,7 @@ void ViewportWidget::loadOFResults(const QString& caseDir)
     m_fieldCombo->setEnabled(!m_availableFields.isEmpty());
     m_fieldCombo->blockSignals(false);
 
-    // Slider range = 0..N-1 (index-based): works for both integer RANS steps and
+    // Index-based slider range 0..N-1 works for both integer RANS steps and
     // fractional LES times where int(lastTime) would truncate to 0.
     int lastIdx = m_timeSteps.size() - 1;
     m_timeSlider->blockSignals(true);
@@ -1027,8 +1079,9 @@ void ViewportWidget::loadOFResults(const QString& caseDir)
     // even when the last timestep index hasn't changed between runs
     m_volumeDataSet = nullptr;
     m_streamPointCache = nullptr;
+    m_streamPaths = nullptr;
     applyField(m_fieldCombo->currentText(), m_timeSteps.size() - 1);
-    resetCamera();  // only on initial results load, not on field/step changes
+    resetCamera();  // only on the initial results load
 }
 
 void ViewportWidget::applyField(const QString& field, int timeStep)
@@ -1063,7 +1116,7 @@ void ViewportWidget::applyField(const QString& field, int timeStep)
     }
 
     // Enumerate all available patches from reader (after UpdateInformation).
-    // Build a lookup so we can enable by exact VTK name: avoids the
+    // Build a lookup to enable by exact VTK name, avoiding the
     // EnableAllPatchArrays+disable-by-name approach which silently fails when
     // the name doesn't match exactly, letting internalMesh bleed through.
     reader->DisableAllPatchArrays();
@@ -1089,7 +1142,7 @@ void ViewportWidget::applyField(const QString& field, int timeStep)
     if (enabledWallCount == 0) {
         // No wall patch names matched (LES case, non-standard naming, or boundary file missing).
         // Fall back to enabling all non-internal patches so the mesh renders and the
-        // colorbar becomes visible, rather than bailing out silently.
+        // colorbar becomes visible.
         for (int i = 0; i < nPatches; ++i) {
             QString pname = QString::fromStdString(reader->GetPatchArrayName(i));
             if (!isInternal(pname))
@@ -1112,7 +1165,7 @@ void ViewportWidget::applyField(const QString& field, int timeStep)
     auto* poly = geom->GetOutput();
     if (!poly || poly->GetNumberOfPoints() == 0) return;
 
-    // Smooth normals: removes flat-shading faceting from low-poly STL surfaces.
+    // Smooth normals remove flat-shading faceting from low-poly STL surfaces.
     // FeatureAngle 45° preserves sharp edges (wing LE, fin roots) while smoothing curved surfaces.
     auto normals = vtkSmartPointer<vtkPolyDataNormals>::New();
     normals->SetFeatureAngle(20.0);
@@ -1145,8 +1198,8 @@ void ViewportWidget::applyField(const QString& field, int timeStep)
     mapper->SetLookupTable(m_lut);
     mapper->ScalarVisibilityOn();
 
-    // Auto-range: for |U| the magnitude array lives in normalsPoly (post-calculator),
-    // not in the original poly which only has the raw U vector.
+    // For |U| the magnitude array lives in normalsPoly (post-calculator)
+    // because the original poly only has the raw U vector.
     double range[2] = {0, 1};
     auto* rangePoly = normalsPoly ? normalsPoly : poly;
     auto* arr = rangePoly->GetPointData()->GetArray(actualField.toStdString().c_str());
@@ -1166,13 +1219,13 @@ void ViewportWidget::applyField(const QString& field, int timeStep)
     m_lastDataSet = vtkSmartPointer<vtkPolyData>::New();
     vtkPolyData::SafeDownCast(m_lastDataSet)->ShallowCopy(poly);
 
-    // Colorbar range fallback: wall surface has U=0 everywhere (no-slip) so the
+    // Colorbar range fallback. The no-slip wall has U=0 everywhere so the
     // surface-only range for |U| is degenerate [0,0]. Read inlet velocity from 0/U
-    // as a lightweight substitute: avoids loading the full volume mesh here.
+    // as a lightweight substitute for loading the full volume mesh.
     if (field == "|U|" && range[0] >= range[1] - 1e-10) {
         double uInf = m_inletSpeed;  // pre-loaded from run metadata (most reliable)
         if (uInf < 1e-6) {
-            // Scan 0/U: match any "uniform (x y z)" regardless of keyword prefix
+            // Scan 0/U for any "uniform (x y z)" regardless of keyword prefix
             // so fixedValue, inletOutlet, freestream, pressureInletOutletVelocity etc. all work.
             for (const QString& uPath : {m_caseDir + "/0/U",
                                           m_caseDir + "/0.orig/U",
@@ -1202,16 +1255,19 @@ void ViewportWidget::applyField(const QString& field, int timeStep)
 
     // Invalidate cached volume data whenever the time step changes so streamlines
     // reload from the correct time directory on next toggle.
-    if (timeStep != m_lastTimeStepIndex)
+    if (timeStep != m_lastTimeStepIndex) {
         m_volumeDataSet = nullptr;
         m_streamPointCache = nullptr;
+        m_streamPaths = nullptr;
+    }
     m_lastTimeStepIndex = timeStep;
 
     // Refresh overlays if active
     if (m_btnIso    && m_btnIso->isChecked())    toggleIsoSurface(true);
     if (m_btnStream && m_btnStream->isChecked()) toggleStreamlines(true);
+    else if (m_btnParticles && m_btnParticles->isChecked() && !m_streamPaths) toggleParticles(true);
 
-    // Domain outline: wireframe of non-wall patches
+    // Domain outline as a wireframe of non-wall patches
     if (!domainPatches.isEmpty()) {
         auto reader2 = vtkSmartPointer<vtkOpenFOAMReader>::New();
         reader2->SetFileName(foamFile.toStdString().c_str());
@@ -1240,7 +1296,7 @@ void ViewportWidget::applyField(const QString& field, int timeStep)
     }
 
     updateScalarBar(field, range[0], range[1]);
-    // Don't reset camera here: caller handles it for geometry loads.
+    // The caller resets the camera for geometry loads.
     // updateScalarBar already triggers Render().
 }
 
@@ -1292,6 +1348,17 @@ void ViewportWidget::showStreamSettings()
     scaleSpin->setToolTip("1.0 = default  |  0.5 = thinner  |  3.0 = thicker");
     form->addRow("Tube radius scale:", scaleSpin);
 
+    double origSpeed = m_particles->speed();
+    auto* speedSpin = new QDoubleSpinBox;
+    speedSpin->setRange(0.1, 5.0);
+    speedSpin->setSingleStep(0.1);
+    speedSpin->setDecimals(1);
+    speedSpin->setValue(origSpeed);
+    speedSpin->setToolTip("Particle animation speed: 1.0 = default");
+    form->addRow("Particle speed:", speedSpin);
+    connect(speedSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, [this](double v){ m_particles->setSpeed(v); });
+
     // Live-update member vars on every spinbox change so values are never lost
     connect(proxSpin,  QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, [this](double v){ m_streamProximity = v; });
@@ -1311,8 +1378,13 @@ void ViewportWidget::showStreamSettings()
     if (result == QDialog::Accepted) {
         if (m_btnStream && m_btnStream->isChecked())
             toggleStreamlines(true);
+        else if (m_btnParticles && m_btnParticles->isChecked()) {
+            m_streamPaths = nullptr;
+            toggleParticles(true);
+        }
     } else {
         // Restore originals on Cancel
+        m_particles->setSpeed(origSpeed);
         m_streamProximity = origProx;
         m_streamDensity   = origDens;
         m_streamTubeScale = origScale;
@@ -1420,6 +1492,8 @@ void ViewportWidget::clearScene()
     m_lastDataSet   = nullptr;
     m_volumeDataSet = nullptr;
     m_streamPointCache = nullptr;
+    m_streamPaths   = nullptr;
+    stopParticles();
     m_inletSpeed    = 0.0;   // stale value would skew the next case's colour range
     m_caseDir.clear();
     m_stlPath.clear();
@@ -1463,7 +1537,7 @@ void ViewportWidget::setTheme(Theme t)
     if (m_vtkHost)
         m_vtkHost->setStyleSheet(QString("QWidget#viewportHost { background-color: %1; }").arg(bg.name()));
 
-    // No local stylesheet: ThemeEngine's global QSS handles everything.
+    // ThemeEngine's global QSS handles all styling here.
     // A local setStyleSheet here would override palette derivation for all
     // child widgets (including the Field combobox), causing Fusion to paint
     // drop-down buttons with unexpected palette colors.
@@ -1487,7 +1561,7 @@ void ViewportWidget::updateDomainPreview(double x0, double y0, double z0,
     m_domainCubeSource->Update();
     m_domainPreviewActor->SetVisibility(1);
 
-    // Cone: place it at the inlet face, point in the flow direction
+    // Place the cone at the inlet face, pointing along the flow
     double coneLen = std::min({lx, ly, lz}) * 0.18;
     double coneRad = coneLen * 0.35;
     m_flowConeSource->SetHeight(coneLen);

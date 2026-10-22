@@ -102,7 +102,7 @@ FileBrowserDialog::FileBrowserDialog(Mode mode, const QString& startDir,
 
     root->addLayout(bcRow);
 
-    // Splitter: sidebar | file list
+    // Splitter with the sidebar and file list
     auto* splitter = new QSplitter(Qt::Horizontal);
     splitter->setChildrenCollapsible(false);
 
@@ -446,7 +446,7 @@ void FileBrowserDialog::showContextMenu(const QPoint& pos)
     auto* item = m_fileList->itemAt(pos);
     if (!item) return;
     bool isDir = item->data(0, Qt::UserRole + 1).toBool();
-    if (isDir) return;  // only allow deleting files, not directories
+    if (isDir) return;  // only files can be deleted
 
     QMenu menu(this);
     auto* delAct = menu.addAction("Delete");
@@ -473,7 +473,7 @@ void FileBrowserDialog::deleteSelected()
     QString filePath = item->data(0, Qt::UserRole).toString();
     QString fileName = QFileInfo(filePath).fileName();
 
-    // Confirm dialog: requires explicit click on "Delete" button
+    // Confirmation needs an explicit click on "Delete"
     QMessageBox confirm(this);
     confirm.setWindowTitle("Confirm Delete");
     confirm.setText(QString("Delete <b>%1</b>?").arg(fileName));
@@ -486,7 +486,7 @@ void FileBrowserDialog::deleteSelected()
 
     if (confirm.clickedButton() != delBtn) return;
 
-    // Move to trash dir instead of permanent delete
+    // Move to the trash dir so the delete can be undone
     QString trashDir = QDir::tempPath() + "/.cakecfd_trash";
     QDir().mkpath(trashDir);
 

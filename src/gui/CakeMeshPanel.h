@@ -47,10 +47,10 @@ public:
 
     QJsonObject getState() const;
     void        setState(const QJsonObject& obj);
-    void        reset();   // clear all fields: call before wiring a new project
+    void        reset();   // clear all fields before wiring a new project
 
 signals:
-    // Emitted only after mesh is complete: ready for Studio to pick up
+    // Emitted once the mesh is complete and ready for Studio
     void exportRequested(const QString& caseDir);
 
 private slots:

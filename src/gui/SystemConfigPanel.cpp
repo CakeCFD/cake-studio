@@ -52,7 +52,7 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
 {
     setFixedHeight(52);
 
-    // Outer panel: just provides background + padding for the block
+    // Outer panel only provides background and padding for the block
     auto* outer = new QHBoxLayout(this);
     outer->setContentsMargins(8, 6, 8, 6);
 
@@ -148,7 +148,7 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
     auto* writeEveryLbl = new QLabel("Save every:");
     writeEveryLbl->setStyleSheet("font-size:11px;");
     lay->addWidget(writeEveryLbl);
-    // Double-valued: transient cases use writeInterval in seconds (0.0005)
+    // Double-valued because transient cases use writeInterval in seconds (0.0005)
     m_writeEvery = new GDoubleSpinBox;
     m_writeEvery->setRange(1e-9, 1e9);
     m_writeEvery->setDecimals(10);
@@ -255,8 +255,7 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
     connect(btnApply, &QPushButton::clicked, this, &SystemConfigPanel::onApply);
 
     // QGraphicsDropShadowEffect triggers a full offscreen blur composite on every
-    // repaint: while dragging panels this fires continuously and kills frame rate.
-    // Use a CSS border instead; zero runtime cost.
+    // repaint, which kills frame rate while dragging panels.
     m_block->setStyleSheet(m_block->styleSheet() +
         "QFrame { border-bottom: 2px solid rgba(0,0,0,120); }");
 
@@ -268,7 +267,7 @@ void SystemConfigPanel::onThemeChanged()
 {
     const ThemeColors& c = ThemeEngine::instance().colors();
 
-    // Outer panel matches the main window background: the block floats inside it
+    // Outer panel matches the main window background so the block floats inside it
     setStyleSheet(QString("SystemConfigPanel { background:%1; }").arg(c.window.name()));
 
     if (m_block) {
@@ -423,7 +422,7 @@ void SystemConfigPanel::writeControlDictIfEdited()
 void SystemConfigPanel::onApply()
 {
     writeDecomposeParDict();
-    // Only values the user actually edited: onApply also runs right before every
+    // Only values the user actually edited, since onApply also runs right before every
     // solver start, after other panels may have rewritten controlDict
     writeControlDictIfEdited();
     onThemeChanged();

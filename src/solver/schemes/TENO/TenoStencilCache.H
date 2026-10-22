@@ -38,7 +38,7 @@ struct FaceStencilData
     labelList stencil1;   // neighbour-side sub-stencil (neighbour 1-ring)
     labelList stencil2;   // owner 2nd-ring sub-stencil (for TENO6 4th candidate)
 
-    // Pre-computed least-squares pseudo-inverse (4 x n) row-major:
+    // Pre-computed least-squares pseudo-inverse (4 x n) row-major
     //   u_face = sum_j lsq[0*n+j]*u[j]
     //   du/dx  = sum_j lsq[1*n+j]*u[j]   (evaluated at faceCentre)
     scalarField lsqK;

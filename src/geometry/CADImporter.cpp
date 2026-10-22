@@ -62,8 +62,8 @@ CADImportResult CADImporter::load(const QString& filePath, CADFormat format)
     }
 
     if (res.success && res.shape) {
-        // Repair only STEP/IGES: BREP is already topologically valid
-        if (false) // repair disabled for now: too slow on dev hardware
+        // Repair only STEP/IGES since BREP is already topologically valid
+        if (false) // repair disabled for now, too slow on dev hardware
             repairShape(*res.shape);
         computeStats(res);
     }
@@ -124,8 +124,8 @@ CADImportResult CADImporter::loadBREP(const QString& path)
 
 void CADImporter::repairShape(TopoDS_Shape& shape)
 {
-    // Only called for STEP/IGES: fixes gaps and bad tolerances from CAD translators.
-    // Keep it minimal: just face/wire fixes, no domain unification.
+    // Only called for STEP/IGES. Fixes gaps and bad tolerances from CAD translators
+    // with face and wire fixes only, no domain unification.
     ShapeFix_Shape fixer(shape);
     fixer.SetPrecision(1e-6);
     fixer.SetMaxTolerance(1e-3);
@@ -146,18 +146,18 @@ void CADImporter::computeStats(CADImportResult& res)
     for (TopExp_Explorer ex(s, TopAbs_EDGE);  ex.More(); ex.Next()) ++res.numEdges;
 
     std::cerr << "[IMPORT] explorers done solids=" << res.numSolids << "\n" << std::flush;
-    // Volume via GProp: only if shape has solids (avoids crash on shell-only imports)
+    // Volume via GProp, only when the shape has solids (avoids crash on shell-only imports)
     if (res.numSolids > 0) {
         GProp_GProps vp;
             std::cerr << "[IMPORT] VolumeProperties start\n" << std::flush;
         BRepGProp::VolumeProperties(s, vp, true);
         std::cerr << "[IMPORT] VolumeProperties done\n" << std::flush;
-        std::cerr << "[IMPORT] VolumeProperties done\n" << std::flush; // useTriangulation=true: much faster
+        std::cerr << "[IMPORT] VolumeProperties done\n" << std::flush; // useTriangulation=true is much faster
         res.volume = vp.Mass();
     }
 
     std::cerr << "[IMPORT] computeStats done\n" << std::flush;
-    // Surface area skipped for now: BRepGProp::SurfaceProperties is slow
+    // Surface area skipped for now because BRepGProp::SurfaceProperties is slow
 }
 
 } // namespace CFD

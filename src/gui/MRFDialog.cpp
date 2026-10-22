@@ -54,9 +54,9 @@ MRFDialog::MRFDialog(const QString& caseDir, QWidget* parent)
     setWindowTitle("MRF: Rotating Reference Frames");
     setMinimumSize(680, 520);
 
-    auto* root = new QHBoxLayout;   // no parent: added to outer below
+    auto* root = new QHBoxLayout;   // no parent, added to outer below
 
-    // Left: zone list
+    // Zone list on the left
     auto* leftCol = new QVBoxLayout;
     leftCol->addWidget(new QLabel("Rotating zones:"));
 
@@ -72,7 +72,7 @@ MRFDialog::MRFDialog(const QString& caseDir, QWidget* parent)
     leftCol->addLayout(btnRow);
     root->addLayout(leftCol);
 
-    // Right: detail form
+    // Detail form on the right
     auto* rightCol = new QVBoxLayout;
 
     m_detailBox = new QGroupBox("Zone settings");
@@ -186,7 +186,7 @@ QList<MRFZone> MRFDialog::parseFile(const QString& text)
         auto val = [&](const QString& key) -> QString {
             const OFDict::DictEntry* ke = OFDict::findEntry(entries, key);
             if (!ke) return QString();
-            if (ke->braceOpen >= 0)   // dict form: hand back its contents
+            if (ke->braceOpen >= 0)   // dict form hands back its contents
                 return body.mid(ke->braceOpen + 1, ke->braceClose - ke->braceOpen - 1);
             return OFDict::entryValue(body, *ke);
         };
@@ -213,7 +213,7 @@ QList<MRFZone> MRFDialog::parseFile(const QString& text)
             z.axisZ = am.captured(3).toDouble();
         }
 
-        // omega: stored as rad/s, convert to RPM for display
+        // omega is stored as rad/s and shown as RPM
         QString omStr = val("omega");
         // "omega constant 104.72", "omega 104.72" or "omega { type constant; value 104.72; }"
         static const QRegularExpression omRe(
@@ -264,7 +264,7 @@ void MRFDialog::writeZones()
     QString path = m_caseDir + "/constant/MRFProperties";
 
     if (m_zones.isEmpty()) {
-        // No zones: remove the file so OpenFOAM runs without MRF.
+        // With no zones, remove the file so OpenFOAM runs without MRF.
         // Leaving an empty file causes OF to initialise MRFZoneList and
         // throw spurious "cannot find cellZone" errors on non-rotating cases.
         QFile::remove(path);

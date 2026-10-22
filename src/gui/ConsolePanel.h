@@ -43,7 +43,7 @@ public:
 
 signals:
     void resultsReady(const QString& caseDir);
-    void aboutToRun();   // emitted before solver starts: lets MainWindow flush PhysicsPanel
+    void aboutToRun();   // emitted before the solver starts so MainWindow can flush PhysicsPanel
     void caseFilesChanged(const QString& caseDir);  // controlDict patched - Properties panel needs refresh
 
 public slots:

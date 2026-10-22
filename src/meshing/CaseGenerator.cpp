@@ -92,7 +92,7 @@ CaseGenerator::Result CaseGenerator::generate(
         return res;
     }
 
-    // 2. blockMeshDict: auto-sized from geometry bbox + padding
+    // 2. blockMeshDict auto-sized from the geometry bbox plus padding
     auto bounds = geo.bounds();
     auto bmParams = BlockMeshWriter::defaultParams(bounds, params.meshPadding,
                                                     params.bgMeshCells);
@@ -113,9 +113,9 @@ CaseGenerator::Result CaseGenerator::generate(
     snp.layerExpansionRatio  = params.layerExpansionRatio;
     snp.finalLayerThickness  = params.firstLayerThickness;
     snp.minThickness         = params.minLayerThickness;
-    // locationInMesh: midpoint between inlet wall and geometry front face.
+    // locationInMesh is the midpoint between the inlet wall and the geometry front face.
     // -X flow puts the inlet on X-max, so seed on that side (matches BlockMeshWriter).
-    // Y/Z are nudged off the domain centre by a fraction of a cell: with an even
+    // Y/Z are nudged off the domain centre by a fraction of a cell because with an even
     // cell count the exact centre lies on a cell face and snappy rejects it.
     const auto& bm = bmParams;
     const double cellY = (bm.bounds[3] - bm.bounds[2]) / bm.cellsY;
@@ -230,7 +230,7 @@ bool CaseGenerator::writeFvSchemes(const QString& systemDir, bool les, bool comp
           << "fluxRequired      { default no; p ; }\n\n"
           << "wallDist          { method meshWave; }\n";
     } else if (les) {
-        // LES: TENO replaces the momentum div; viscous stress terms stay linear
+        // For LES, TENO replaces the momentum div while viscous stress terms stay linear
         QString lesDiv = (divScheme == "teno6" || divScheme == "teno" || divScheme == "teno5")
             ? divUScheme : "Gauss linear";
         o << header
@@ -276,7 +276,7 @@ bool CaseGenerator::writeFvSolution(const QString& systemDir, SolverType solver)
     QFile f(systemDir + "/fvSolution");
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     QTextStream o(&f);
-    // U: smoothSolver + symGaussSeidel for steady SIMPLE, PBiCGStab + DILU for transient
+    // U uses smoothSolver + symGaussSeidel for steady SIMPLE, PBiCGStab + DILU for transient
     const char* uSolver = isTransient(solver)
         ? "solver PBiCGStab; preconditioner DILU;"
         : "solver smoothSolver; smoother symGaussSeidel;";
@@ -319,7 +319,7 @@ bool CaseGenerator::writeFvSolution(const QString& systemDir, SolverType solver)
           << "    fields  { p 0.3; rho 0.05; }\n"
           << "    equations { U 0.5; h 0.5; k 0.5; omega 0.5; epsilon 0.5; }\n}\n";
     } else if (solver == SolverType::IcoFoam) {
-        // icoFoam reads a PISO dict, not PIMPLE
+        // icoFoam reads a PISO dict
         o << "PISO\n{\n"
           << "    nCorrectors 2;\n"
           << "    nNonOrthogonalCorrectors 1;\n}\n";
@@ -328,7 +328,7 @@ bool CaseGenerator::writeFvSolution(const QString& systemDir, SolverType solver)
           << "    nOuterCorrectors 2;\n"
           << "    nCorrectors 2;\n"
           << "    nNonOrthogonalCorrectors 1;\n}\n\n"
-          // Transient: no under-relaxation (full update per step)
+          // Transient runs skip under-relaxation (full update per step)
           << "relaxationFactors\n{\n"
           << "    equations { \".*\" 1; }\n}\n";
     }
@@ -583,7 +583,7 @@ bool CaseGenerator::writeBoundaryConditions(
                     }
                 })) return false;
 
-        // k: DynamicKEqn LES SGS kinetic energy
+        // k is the DynamicKEqn LES SGS kinetic energy
         if (lesk && !writeF("k", "volScalarField", "[0 2 -2 0 0 0 0]",
                 "uniform " + QString::number(k_val),
                 [&](const PatchBC& bc) -> QString {
@@ -595,7 +595,7 @@ bool CaseGenerator::writeBoundaryConditions(
                     }
                 })) return false;
 
-        // nut (all LES models; v2412 reads nut, not nuSgs)
+        // nut for all LES models, which v2412 reads as nut
         if (les && !writeF("nut", "volScalarField", "[0 2 -1 0 0 0 0]",
                 "uniform 0", symOrZero)) return false;
 
@@ -651,7 +651,7 @@ bool CaseGenerator::writeBoundaryConditions(
           << "    front   { type symmetry; }\n"
           << "    back    { type symmetry; }\n}\n";
     }
-    // p: incompressible: kinematic (m²/s²), compressible: thermodynamic (Pa)
+    // p is kinematic (m²/s²) when incompressible and thermodynamic (Pa) when compressible
     {
         QFile f(d.filePath("p"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -688,7 +688,7 @@ bool CaseGenerator::writeBoundaryConditions(
               << "    back    { type symmetry; }\n}\n";
         }
     }
-    // T: compressible only
+    // T for compressible only
     if (comp) {
         QFile f(d.filePath("T"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -756,7 +756,7 @@ bool CaseGenerator::writeBoundaryConditions(
           << "    front   { type symmetry; }\n"
           << "    back    { type symmetry; }\n}\n";
     }
-    // nut: required by all LES models (v2412 reads nut, not nuSgs).
+    // nut is required by all LES models in v2412.
     // dynamicLagrangian also reads flm and fmm; fmm starts at a tiny positive
     // value because the initial nut = (flm/fmm)*delta^2*|S| divides by it.
     if (les) {
@@ -784,7 +784,7 @@ bool CaseGenerator::writeBoundaryConditions(
               << "    back    { type symmetry; }\n}\n";
         }
     }
-    // alphat: compressible solvers with a turbulence model
+    // alphat for compressible solvers with a turbulence model
     if (comp && p.turbulence != TurbulenceModel::Laminar) {
         QFile f(d.filePath("alphat"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -801,7 +801,7 @@ bool CaseGenerator::writeBoundaryConditions(
           << "    front   { type symmetry; }\n"
           << "    back    { type symmetry; }\n}\n";
     }
-    // nut: required by all RAS models
+    // nut is required by all RAS models
     if (kw || ke || sa) {
         QFile f(d.filePath("nut"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -920,7 +920,7 @@ bool CaseGenerator::writeTurbulenceProperties(
     }
     o.flush();
 
-    // Write both names: turbulenceProperties is what v2412 reads, momentumTransport
+    // Write both names. v2412 reads turbulenceProperties, while momentumTransport
     // keeps the case readable by the other tools that look for it.
     for (const QString& name : { QString("turbulenceProperties"), QString("momentumTransport") }) {
         QFile f(constDir + "/" + name);

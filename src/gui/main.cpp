@@ -27,7 +27,7 @@
 int main(int argc, char* argv[]) {
     // WSLg ships both the d3d12 Mesa driver (real GPU through /dev/dxg) and
     // llvmpipe (CPU rasteriser). Auto-selection lands on llvmpipe, which reports
-    // "Accelerated: no" and makes the entire interface stutter, not just the 3D
+    // "Accelerated: no" and makes the entire interface stutter including the 3D
     // viewport. d3d12 is a Gallium driver, so it is chosen with GALLIUM_DRIVER.
     //
     // Mesa resolves the driver while libGL is loaded, which happens before main()

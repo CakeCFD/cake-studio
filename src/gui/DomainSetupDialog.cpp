@@ -176,7 +176,7 @@ DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
     root->addWidget(geoBox);
 
     // flow axis - locked to -X for V1; geometry must be oriented nose-forward before importing
-    m_flowAxis = new QComboBox(this);  // kept for API compat, not shown
+    m_flowAxis = new QComboBox(this);  // kept hidden for API compat
     m_flowAxis->addItem("-X", "-X");
     auto* axisBox  = new QGroupBox("Airflow Direction", this);
     auto* axisForm = new QFormLayout(axisBox);
@@ -260,7 +260,7 @@ DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
     connect(notNow,   &QPushButton::clicked, this, &QDialog::reject);
     connect(generate, &QPushButton::clicked, this, &DomainSetupDialog::onGenerate);
 
-    // Live preview: all parameter spinners + axis combo
+    // Live preview from all parameter spinners and the axis combo
     auto upd = [this](double){ updatePreview(); };
     for (auto* s : {m_upstreamMult, m_downstreamMult, m_sideMult, m_cellSize})
         connect(s, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, upd);
@@ -325,7 +325,7 @@ void DomainSetupDialog::onGenerate()
         return;
     }
 
-    const QString axis = "-X";   // V1: always -X - orient geometry nose-forward before importing
+    const QString axis = "-X";   // V1 is always -X, so orient geometry nose-forward before importing
     double  aoa  = m_aoa ? m_aoa->value() : 0.0;
 
     // Persist axis + AoA so other panels (viewport, CakeMeshPanel) stay in sync
@@ -342,7 +342,7 @@ void DomainSetupDialog::onGenerate()
         QString txt = uFile.readAll();
         uFile.close();
 
-        // Only internalField and the inlet patch's value are rotated: walls
+        // Only internalField and the inlet patch's value are rotated. Walls
         // (fixedValue uniform (0 0 0)) and other patches must stay untouched
         using namespace OFDict;
         static const QRegularExpression reUni(
@@ -450,13 +450,13 @@ bool DomainSetupDialog::writeBlockMeshDict()
     };
 
     // inlet / outlet / symmetry side patches based on flow axis
-    // Vertex indices:
+    // Vertex indices
     //   v0=(x0,y0,z0) v1=(x1,y0,z0) v2=(x1,y1,z0) v3=(x0,y1,z0)
     //   v4=(x0,y0,z1) v5=(x1,y0,z1) v6=(x1,y1,z1) v7=(x0,y1,z1)
-    // Face lists (outward normals via RHR):
-    //   X-min(-X): (0 4 7 3)    X-max(+X): (1 2 6 5)
-    //   Y-min(-Y): (0 1 5 4)    Y-max(+Y): (3 7 6 2)
-    //   Z-min(-Z): (0 3 2 1)    Z-max(+Z): (4 5 6 7)
+    // Face lists with outward normals via RHR
+    //   X-min(-X) (0 4 7 3)    X-max(+X) (1 2 6 5)
+    //   Y-min(-Y) (0 1 5 4)    Y-max(+Y) (3 7 6 2)
+    //   Z-min(-Z) (0 3 2 1)    Z-max(+Z) (4 5 6 7)
 
     // Side patches use the same names as BlockMeshWriter / CaseGenerator's 0/
     // files (top=+Y, bottom=-Y, front=+Z, back=-Z) so every patch has a BC.
@@ -524,7 +524,7 @@ bool DomainSetupDialog::writeSnappyHexMeshDict()
     getDomainBounds(x0, x1, y0, y1, z0, z1);
     double cx = (x0+x1)/2, cy = (y0+y1)/2, cz = (z0+z1)/2;
 
-    // locationInMesh: near the inlet face, inside the domain and outside the geometry
+    // locationInMesh sits near the inlet face, inside the domain and outside the geometry
     double locX, locY, locZ;
     double frac = 0.08;
     QString axis = m_flowAxis->currentData().toString();

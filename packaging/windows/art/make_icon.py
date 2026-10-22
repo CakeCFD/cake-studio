@@ -19,7 +19,7 @@ def tri(size):
     left, right = cx - w / 2, cx + w / 2
     # stroke ~8% of height, thicker at tiny sizes so it stays visible
     sw = h * (0.08 if size >= 48 else 0.11)
-    # start mid-base so the open path ends join on a flat edge, not the apex
+    # start mid-base so the open path ends join on a flat edge
     d.line([(cx, base), (left, base), (cx, top), (right, base), (cx, base)], fill=BLUE, width=int(sw), joint='curve')
     for f in (1 / 3, 2 / 3):    # two band lines at equal heights
         y = top + h * f

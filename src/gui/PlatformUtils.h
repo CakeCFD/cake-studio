@@ -33,8 +33,8 @@ inline bool isWSL()
 }
 
 // Open a directory in the native file manager.
-// On WSL: converts the Linux path to a Windows UNC path and launches Explorer.
-// On native Linux: uses xdg-open.
+// On WSL it converts the path to a Windows UNC path and launches Explorer,
+// on native Linux it uses xdg-open.
 inline void openDirectory(const QString& path)
 {
     if (isWSL()) {

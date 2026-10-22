@@ -1,6 +1,3 @@
-#!/usr/bin/env bash
-# Packages build/ and libtenoScheme.so into cakestudio-<version>-ubuntu24.04-x86_64.tar.gz.
-# Usage: package.sh <version> [output-dir]
 set -euo pipefail
 
 VERSION="${1:?usage: package.sh <version> [output-dir]}"

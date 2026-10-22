@@ -57,7 +57,7 @@ int main(int argc, char* argv[])
     const std::string testDir = std::string(argv[0]).substr(
         0, std::string(argv[0]).rfind('/')) + "/../../../tests/mesh_pipeline_test";
 
-    // Step 1: create BREP
+    // Step 1 creates the BREP
     std::cout << "\n=== Step 1: Create sphere BREP (r=0.5m) ===\n" << std::flush;
     t0 = Clock::now();
     const std::string brepPath = testDir + "/sphere.brep";
@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
         log("done");
     }
 
-    // Step 2: load BREP manually (bypass CADImporter for now)
+    // Step 2 loads the BREP manually, bypassing CADImporter for now
     std::cout << "\n=== Step 2: Load BREP + tessellate ===\n" << std::flush;
     t0 = Clock::now();
 
@@ -142,7 +142,7 @@ int main(int argc, char* argv[])
     std::cout << "  VTK points=" << poly->GetNumberOfPoints()
               << "  tris=" << poly->GetNumberOfCells() << "\n" << std::flush;
 
-    // Step 3: write STL + generate case
+    // Step 3 writes the STL and generates the case
     std::cout << "\n=== Step 3: Generate OpenFOAM case ===\n" << std::flush;
     t0 = Clock::now();
 
@@ -191,7 +191,7 @@ int main(int argc, char* argv[])
     auto res = CFD::CaseGenerator::generate_dicts_only(cp, bounds);
     log(res ? "dicts written" : "dict write failed");
 
-    // Step 4: run OF
+    // Step 4 runs OpenFOAM
     std::cout << "\n=== Step 4: OpenFOAM pipeline ===\n" << std::flush;
     std::string of = "source /usr/lib/openfoam/openfoam2412/etc/bashrc 2>/dev/null";
     std::string cd = "cd " + caseDir;
