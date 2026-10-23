@@ -34,6 +34,7 @@ class tenoScheme
     scalar C_T_;
     scalar eps_;
     int    q_;
+    const surfaceScalarField* faceFluxPtr_ = nullptr;
 
     tenoScheme(const tenoScheme&) = delete;
     void operator=(const tenoScheme&) = delete;
@@ -63,7 +64,7 @@ public:
 
     tenoScheme(const fvMesh& mesh, const surfaceScalarField& faceFlux, Istream& is)
     :   surfaceInterpolationScheme<Type>(mesh),
-        C_T_(1e-6), eps_(1e-12), q_(6)
+        C_T_(1e-6), eps_(1e-12), q_(6), faceFluxPtr_(&faceFlux)
     {}
 
     virtual tmp<surfaceScalarField> weights(

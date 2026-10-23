@@ -28,12 +28,12 @@ OpenFOAM 2412 backend with custom numerical schemes. TENO (Targeted Essentially
 Non-Oscillatory) convection schemes are provided as a wmake library and are not
 available in stock OpenFOAM.
 
-Verification: the schemes as shipped measure second order on smooth linear
-advection, not the fifth and sixth order of the reference formulation, the
-reconstruction currently reduces to central differencing in smooth regions, which
-is intentional for pressure-velocity stability but caps the achievable order. The
-measurements are reproducible with validation/tools/advection_order.py (case
-VC-001). Work toward the full design order is in progress on the
+Verification: the schemes as shipped are upwind-biased and second order. In smooth
+regions they reconstruct from the upwind cell with a least-squares gradient, and
+near steep gradients they use only the upwind stencil, bounded by the neighbouring
+cell values. On smooth linear advection they measure about second order, not the
+fifth and sixth order of the reference formulation. The measurements are
+reproducible with validation/tools/advection_order.py (case VC-001). Work toward the full design order is in progress on the
 teno-kexact-wip branch, where a k-exact upwind-biased reconstruction reaches
 approximately fifth order on the same test.
 
