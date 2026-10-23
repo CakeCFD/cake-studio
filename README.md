@@ -144,8 +144,7 @@ numerical simulation data. To enable it:
 2. Open the dataset manager panel in the application.
 3. Enter the token in the API token field.
 
-The token is stored locally in the application settings and is not written to the
-repository.
+The token is stored locally in the application settings.
 
 ## Reporting bugs
 
