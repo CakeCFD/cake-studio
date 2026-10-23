@@ -6,6 +6,9 @@ Bug reports, questions and pull requests are welcome. Please open an issue first
 
 Open an issue with the steps to reproduce, what you expected, what happened, and your platform (distribution, architecture, OpenFOAM version). Attach the case or log where possible.
 
+## AI usage
+We recognise AI can be used to speed-up research and coding, since AI was not used in this project, we ask you to disclose AI usage or LLM generated code when opening a PR because copyright status of LLM generated code is still unsettled, note that you are responsible for the code and you should be able to explain your code when asked. Unreviewed AI output will be closed.
+
 ## Pull requests
 
 1. Fork the repository and branch from master.
