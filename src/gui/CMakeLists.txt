@@ -1,9 +1,16 @@
-find_package(Qt5 REQUIRED COMPONENTS Widgets OpenGL Network)
+find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGL OpenGLWidgets Network)
 find_package(VTK 9 REQUIRED COMPONENTS
     CommonCore CommonDataModel RenderingCore RenderingOpenGL2
     InteractionStyle FiltersGeneral FiltersGeometry FiltersCore FiltersFlowPaths
     IOGeometry IOImport IOParallel
     GUISupportQt RenderingAnnotation)
+
+if(NOT TARGET JsonCpp::JsonCpp)
+    add_library(JsonCpp::JsonCpp SHARED IMPORTED)
+    set_target_properties(JsonCpp::JsonCpp PROPERTIES
+        IMPORTED_LOCATION /usr/lib/x86_64-linux-gnu/libjsoncpp.so
+        INTERFACE_INCLUDE_DIRECTORIES /usr/include/jsoncpp)
+endif()
 
 set(SOURCES
     main.cpp
@@ -11,7 +18,6 @@ set(SOURCES
     ConsolePanel.cpp
     ResidualPlot.cpp
     ViewportWidget.cpp
-    FlowParticles.cpp
     MeshWizard.cpp
     CakeMeshPanel.cpp
     ExportResultsDialog.cpp
@@ -39,7 +45,6 @@ set(HEADERS
     ConsolePanel.h
     ResidualPlot.h
     ViewportWidget.h
-    FlowParticles.h
     MeshWizard.h
     CakeMeshPanel.h
     ExportResultsDialog.h
@@ -69,13 +74,14 @@ target_include_directories(CFDStudio PRIVATE
     ${CMAKE_SOURCE_DIR}/src/meshing)
 
 target_link_libraries(CFDStudio PRIVATE
-    Qt5::Widgets
-    Qt5::OpenGL
-    Qt5::Network
+    Qt6::Widgets
+    Qt6::OpenGL
+    Qt6::OpenGLWidgets
+    Qt6::Network
     ${VTK_LIBRARIES}
     JsonCpp::JsonCpp
     core geometry meshing solver postprocess)
 
 vtk_module_autoinit(
     TARGETS CFDStudio
-    MODULES ${VTK_MODULES_USED})
+    MODULES ${VTK_LIBRARIES})

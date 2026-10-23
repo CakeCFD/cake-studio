@@ -1,6 +1,6 @@
 ﻿include(FindOCCT)
 
-find_package(Qt5 REQUIRED COMPONENTS Core)
+find_package(Qt6 REQUIRED COMPONENTS Core)
 find_package(VTK 9 REQUIRED COMPONENTS CommonCore CommonDataModel FiltersGeneral)
 
 add_library(geometry STATIC
@@ -14,6 +14,6 @@ target_include_directories(geometry PUBLIC
     ${OCCT_INCLUDE_DIR})
 
 target_link_libraries(geometry PUBLIC
-    Qt5::Core
+    Qt6::Core
     ${OCCT_LIBRARIES}
     ${VTK_LIBRARIES})

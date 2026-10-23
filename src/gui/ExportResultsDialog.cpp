@@ -31,7 +31,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QTextStream>
-#include <QTextCodec>
+#include <QStringConverter>
 #include <cmath>
 #include "PlatformUtils.h"
 #include <QJsonDocument>
@@ -41,6 +41,8 @@
 #include <QFont>
 #include <QListWidgetItem>
 #include <QSettings>
+
+// construction
 
 ExportResultsDialog::ExportResultsDialog(const QString& caseDir, QWidget* parent)
     : QDialog(parent), m_caseDir(caseDir)
@@ -55,6 +57,7 @@ ExportResultsDialog::ExportResultsDialog(const QString& caseDir, QWidget* parent
     m_tabs = new QTabWidget;
     root->addWidget(m_tabs);
 
+    // Tab 1: Export
     auto* exportTab = new QWidget;
     auto* exportLay = new QVBoxLayout(exportTab);
     exportLay->setSpacing(8);
@@ -77,6 +80,7 @@ ExportResultsDialog::ExportResultsDialog(const QString& caseDir, QWidget* parent
     exportLay->addWidget(outBox);
     connect(browse, &QPushButton::clicked, this, &ExportResultsDialog::onBrowseOutput);
 
+    // Reference Quantities
     auto* refBox  = new QGroupBox("Reference Quantities  (for Re, Cd, Cl, Cm)");
     auto* refForm = new QFormLayout(refBox);
     refForm->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
@@ -93,11 +97,11 @@ ExportResultsDialog::ExportResultsDialog(const QString& caseDir, QWidget* parent
     };
 
     m_spRho  = mkSpin(0, 1e4,   1.225,  4, " kg/m³");
-    m_spAref = mkSpin(0, 1e6,   0,      6, " m²");
+    m_spAref = mkSpin(0, 1e6,   0,      6, " m²");   // 0 = not set
     m_spLref = mkSpin(0, 1e4,   0,      4, " m");
-    m_spUref = mkSpin(0, 1e4,   0,      3, " m/s");
+    m_spUref = mkSpin(0, 1e4,   0,      3, " m/s");  // 0 = auto from inlet U
 
-    m_spRho ->setMinimum(0.0001);
+    m_spRho ->setMinimum(0.0001);   // keep 0 as special "not set" only for area/length
     m_spAref->setMinimum(0.0);
     m_spLref->setMinimum(0.0);
     m_spUref->setMinimum(0.0);
@@ -107,7 +111,7 @@ ExportResultsDialog::ExportResultsDialog(const QString& caseDir, QWidget* parent
     refForm->addRow("Reference length L_ref:", m_spLref);
     refForm->addRow("Reference velocity U_ref\n(0 = from inlet):", m_spUref);
     m_spAoa = mkSpin(-90.0, 90.0, 0.0, 2, " °");
-    m_spAoa->setSpecialValueText("");
+    m_spAoa->setSpecialValueText("");  // no special text - 0° is valid
     m_spAoa->setToolTip("Angle of attack - auto-detected from 0/U if zero");
     refForm->addRow("Angle of attack AoA:", m_spAoa);
     exportLay->addWidget(refBox);
@@ -154,6 +158,7 @@ ExportResultsDialog::ExportResultsDialog(const QString& caseDir, QWidget* parent
 
     m_tabs->addTab(exportTab, "Export");
 
+    // Tab 2: Run History
     auto* runsTab = new QWidget;
     auto* runsLay = new QVBoxLayout(runsTab);
     runsLay->setSpacing(8);
@@ -169,16 +174,16 @@ ExportResultsDialog::ExportResultsDialog(const QString& caseDir, QWidget* parent
         "QListWidget::item { padding: 2px 4px; }"
         "QListWidget::indicator {"
         "  width: 12px; height: 12px;"
-        "  border: 1px solid palette(mid);"
+        "  border: 1px solid #666;"
         "  border-radius: 2px;"
-        "  background: palette(base);"
+        "  background: #1a1a1a;"
         "}"
         "QListWidget::indicator:checked {"
-        "  background: palette(link);"
-        "  border-color: palette(link);"
+        "  background: #f0a500;"
+        "  border-color: #f0a500;"
         "}"
         "QListWidget::indicator:hover {"
-        "  border-color: palette(link);"
+        "  border-color: #f0a500;"
         "}"
     );
     runsLay->addWidget(m_runsList, 1);
@@ -219,6 +224,8 @@ ExportResultsDialog::ExportResultsDialog(const QString& caseDir, QWidget* parent
     });
 }
 
+// slots
+
 void ExportResultsDialog::onOpenDir()
 {
     PlatformUtils::openDirectory(m_lastExportDir);
@@ -231,6 +238,7 @@ void ExportResultsDialog::onBrowseOutput()
     if (!dir.isEmpty()) m_outputDir->setText(dir);
 }
 
+// Returns the next auto-numbered subdirectory: <base>/export_001/, export_002/, …
 static QString nextNumberedSubdir(const QString& base, const QString& prefix)
 {
     QDir().mkpath(base);
@@ -310,7 +318,7 @@ void ExportResultsDialog::onGenerateReports()
     for (int i = 0; i < m_runsList->count(); ++i) {
         auto* item = m_runsList->item(i);
         if (item->checkState() == Qt::Checked)
-            selected << item->data(Qt::UserRole).toString();
+            selected << item->data(Qt::UserRole).toString();   // run directory path
     }
 
     if (selected.isEmpty()) {
@@ -326,6 +334,7 @@ void ExportResultsDialog::onGenerateReports()
     for (const QString& runDir : selected) {
         RunInfo info = RunLogger::readRunInfo(runDir);
         if (info.index == 0) { ++fail; continue; }
+        // Each run gets its own numbered subfolder: report_001/, report_002/, …
         QString subDir = nextNumberedSubdir(baseDir, "report");
         QDir().mkpath(subDir);
         QString outPath = subDir + "/run_report.md";
@@ -373,8 +382,11 @@ void ExportResultsDialog::refreshRunsList()
     m_runsStatus->setText(QString("%1 run(s) found. Select runs and click Generate Reports.").arg(runs.size()));
 }
 
+// parsers
+
 QString ExportResultsDialog::detectSolver() const
 {
+    // Check controlDict application field first (most reliable)
     QFile cd(m_caseDir + "/system/controlDict");
     if (cd.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QString txt = cd.readAll();
@@ -383,6 +395,7 @@ QString ExportResultsDialog::detectSolver() const
         if (m.hasMatch()) return m.captured(1);
     }
 
+    // Fall back to log files
     for (const QString& s : {
             "simpleFoam", "buoyantSimpleFoam", "buoyantPimpleFoam",
             "rhoSimpleFoam", "pimpleFoam", "icoFoam", "rhoCentralFoam"}) {
@@ -441,6 +454,8 @@ QList<ExportResultsDialog::ResidualRow> ExportResultsDialog::parseResiduals() co
     return rows;
 }
 
+// OF 2412 force.dat / moment.dat column layout (after stripping parentheses):
+//   col[0]=time  col[1..3]=total  col[4..6]=pressure  col[7..9]=viscous
 static QStringList parseForceLine(const QString& raw)
 {
     QString clean = raw;
@@ -448,44 +463,13 @@ static QStringList parseForceLine(const QString& raw)
     return clean.split(QRegularExpression(R"(\s+)"), Qt::SkipEmptyParts);
 }
 
-struct WindAxes { double d[3], l[3], s[3]; };
-
-static WindAxes windAxes(const QString& inletU)
-{
-    WindAxes w{{-1, 0, 0}, {0, 0, 1}, {0, -1, 0}};
-    QRegularExpression re(R"(\(\s*([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s*\))");
-    auto m = re.match(inletU);
-    if (!m.hasMatch()) return w;
-    double u[3] = { m.captured(1).toDouble(), m.captured(2).toDouble(), m.captured(3).toDouble() };
-    double mag = std::sqrt(u[0]*u[0] + u[1]*u[1] + u[2]*u[2]);
-    if (mag < 1e-12) return w;
-    for (int i = 0; i < 3; ++i) w.d[i] = u[i] / mag;
-
-    int ax = 0;
-    for (int i = 1; i < 3; ++i) if (std::fabs(w.d[i]) > std::fabs(w.d[ax])) ax = i;
-    double up[3] = {0, 0, 0};
-    up[ax == 0 ? 2 : ax == 1 ? 0 : 1] = 1.0;
-    double ud = up[0]*w.d[0] + up[1]*w.d[1] + up[2]*w.d[2];
-    double ln = 0.0;
-    for (int i = 0; i < 3; ++i) { w.l[i] = up[i] - ud * w.d[i]; ln += w.l[i] * w.l[i]; }
-    ln = std::sqrt(ln);
-    for (int i = 0; i < 3; ++i) w.l[i] /= ln;
-    w.s[0] = w.l[1]*w.d[2] - w.l[2]*w.d[1];
-    w.s[1] = w.l[2]*w.d[0] - w.l[0]*w.d[2];
-    w.s[2] = w.l[0]*w.d[1] - w.l[1]*w.d[0];
-    return w;
-}
-
-static double along(double x, double y, double z, const double* a)
-{
-    return x * a[0] + y * a[1] + z * a[2];
-}
-
+// Turbulence dictionary: OF2412 ESI uses constant/turbulenceProperties,
+// newer layouts use constant/momentumTransport
 static QString turbulenceDictPath(const QString& caseDir)
 {
-    const QString tp = caseDir + "/constant/turbulenceProperties";
-    if (QFile::exists(tp)) return tp;
-    return caseDir + "/constant/momentumTransport";
+    const QString mt = caseDir + "/constant/momentumTransport";
+    if (QFile::exists(mt)) return mt;
+    return caseDir + "/constant/turbulenceProperties";
 }
 
 QList<ExportResultsDialog::ForceRow> ExportResultsDialog::parseForces() const
@@ -493,6 +477,8 @@ QList<ExportResultsDialog::ForceRow> ExportResultsDialog::parseForces() const
     QDir ppDir(m_caseDir + "/postProcessing/forces");
     if (!ppDir.exists()) return {};
 
+    // One subdirectory per (re)start time ("0", "500", "1000", ...). Visit
+    // them in numeric order so later restarts override overlapping times.
     QList<QPair<double, QString>> timeDirs;
     for (const QFileInfo& td : ppDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         bool ok = false;
@@ -507,14 +493,17 @@ QList<ExportResultsDialog::ForceRow> ExportResultsDialog::parseForces() const
     for (const auto& td : timeDirs) {
         const QString& timeDir = td.second;
 
+        // force.dat (try both spellings)
         QString forcePath = timeDir + "/forces.dat";
         if (!QFile::exists(forcePath)) forcePath = timeDir + "/force.dat";
         if (!QFile::exists(forcePath)) continue;
 
+        // moment.dat (optional: separate file in OF 2412)
         QString momentPath = timeDir + "/moments.dat";
         if (!QFile::exists(momentPath)) momentPath = timeDir + "/moment.dat";
         bool hasMoments = QFile::exists(momentPath);
 
+        // Parse force file into a time-keyed map first
         {
             QFile f(forcePath);
             if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
@@ -526,12 +515,14 @@ QList<ExportResultsDialog::ForceRow> ExportResultsDialog::parseForces() const
                 if (p.size() < 10) continue;
                 bool ok; ForceRow r;
                 r.time = p[0].toDouble(&ok); if (!ok) continue;
+                // p[1-3] = total, p[4-6] = pressure, p[7-9] = viscous
                 r.fp_x = p[4].toDouble(); r.fp_y = p[5].toDouble(); r.fp_z = p[6].toDouble();
                 r.fv_x = p[7].toDouble(); r.fv_y = p[8].toDouble(); r.fv_z = p[9].toDouble();
                 byTime[r.time] = r;
             }
         }
 
+        // Merge moments from moment.dat if present
         if (hasMoments) {
             QFile mf(momentPath);
             if (mf.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -543,6 +534,7 @@ QList<ExportResultsDialog::ForceRow> ExportResultsDialog::parseForces() const
                     if (p.size() < 10) continue;
                     bool ok; double t = p[0].toDouble(&ok); if (!ok) continue;
                     if (!byTime.contains(t)) continue;
+                    // p[4-6] = pressure moment, p[7-9] = viscous moment
                     byTime[t].mp_x = p[4].toDouble(); byTime[t].mp_y = p[5].toDouble(); byTime[t].mp_z = p[6].toDouble();
                     byTime[t].mv_x = p[7].toDouble(); byTime[t].mv_y = p[8].toDouble(); byTime[t].mv_z = p[9].toDouble();
                 }
@@ -553,6 +545,8 @@ QList<ExportResultsDialog::ForceRow> ExportResultsDialog::parseForces() const
     return byTime.values();
 }
 
+// writers
+
 bool ExportResultsDialog::writeResidualsCsv(const QString& path,
                                              const QList<ResidualRow>& rows) const
 {
@@ -560,7 +554,7 @@ bool ExportResultsDialog::writeResidualsCsv(const QString& path,
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     QTextStream o(&f);
-    o.setCodec(QTextCodec::codecForName("UTF-8"));
+    o.setEncoding(QStringConverter::Utf8);
 
     QStringList fields;
     for (const auto& r : rows)
@@ -585,7 +579,7 @@ bool ExportResultsDialog::writeForcesCsv(const QString& path,
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     QTextStream o(&f);
-    o.setCodec(QTextCodec::codecForName("UTF-8"));
+    o.setEncoding(QStringConverter::Utf8);
     o << "time,Fx_pressure,Fy_pressure,Fz_pressure,Fx_viscous,Fy_viscous,Fz_viscous,"
          "Fx_total,Fy_total,Fz_total,Mx_pressure,My_pressure,Mz_pressure,"
          "Mx_viscous,My_viscous,Mz_viscous,Mx_total,My_total,Mz_total\n";
@@ -607,7 +601,7 @@ bool ExportResultsDialog::writeReport(const QString& path,
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     QTextStream o(&f);
-    o.setCodec(QTextCodec::codecForName("UTF-8"));
+    o.setEncoding(QStringConverter::Utf8);
 
     QString caseName   = QFileInfo(m_caseDir).fileName();
     QString solver     = detectSolver();
@@ -632,6 +626,7 @@ bool ExportResultsDialog::writeReport(const QString& path,
     QString tm = turbModel.isEmpty() ? "(not specified)" : turbModel;
     QString nu      = readDictValue(m_caseDir + "/constant/transportProperties", "nu");
     QString inletU  = readInletU();
+    // Auto-detect AoA from inlet velocity vector (Ux, Uy, Uz)
     double aoa = m_spAoa ? m_spAoa->value() : 0.0;
     if (aoa == 0.0 && !inletU.isEmpty()) {
         QRegularExpression reVec(R"(\(\s*([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s*\))");
@@ -640,6 +635,9 @@ bool ExportResultsDialog::writeReport(const QString& path,
             double ux = mv.captured(1).toDouble();
             double uz = mv.captured(3).toDouble();
             double mag = std::sqrt(ux*ux + uz*uz);
+            // Measure the angle relative to the flow axis, not to +X. On a -X case
+            // atan2(0, -U) is 180 deg, which the +-90 spinbox clamps to 90, so a
+            // zero-AoA run reports and then saves an AoA of 90 deg.
             double sgn = (ux < 0.0) ? -1.0 : 1.0;
             if (mag > 1e-12) aoa = std::atan2(sgn*uz, sgn*ux) * 180.0 / M_PI;
         }
@@ -673,6 +671,7 @@ bool ExportResultsDialog::writeReport(const QString& path,
     if (!endTime.isEmpty()) o << "| End time / max iterations | " << endTime << " |\n";
     if (!nCores.isEmpty())  o << "| CPU cores | " << nCores << " |\n";
 
+    // Div scheme from fvSchemes
     {
         QFile fvf(m_caseDir + "/system/fvSchemes");
         if (fvf.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -690,6 +689,7 @@ bool ExportResultsDialog::writeReport(const QString& path,
     }
     o << "\n";
 
+    // Thermal section: only for solvers that use thermophysicalProperties
     static const QSet<QString> THERMAL_SOLVERS = {
         "buoyantSimpleFoam", "buoyantPimpleFoam", "rhoSimpleFoam", "rhoCentralFoam"
     };
@@ -752,6 +752,8 @@ bool ExportResultsDialog::writeReport(const QString& path,
         o << "|---|---|\n";
         o << "| Final time | " << last.time << " s |\n\n";
         o << "| Field | Final residual |\n|---|---|\n";
+        // For laminar runs the k/ω/ε/nut fields belong to a previous turbulent log :
+        // filter them so they don't pollute a laminar report.
         static const QSet<QString> turbFields = {"k","omega","epsilon","nut","nuTilda","R"};
         bool isLaminar = (st == "laminar");
         for (auto it = last.initResiduals.begin(); it != last.initResiduals.end(); ++it) {
@@ -771,6 +773,7 @@ bool ExportResultsDialog::writeReport(const QString& path,
         o << "| Pressure (wave/form) | " << fr.fp_x << " | " << fr.fp_y << " | " << fr.fp_z << " |\n";
         o << "| Viscous (skin friction) | " << fr.fv_x << " | " << fr.fv_y << " | " << fr.fv_z << " |\n";
         o << "| **Total** | **" << fr.fx() << "** | **" << fr.fy() << "** | **" << fr.fz() << "** |\n";
+        // Use explicit Unicode for middle-dot to avoid Qt5 Latin-1 char* mangling
         const QString Nm = QString("N") + QChar(0x00B7) + "m";
         o << "| Moment [" << Nm << "] (pressure) | " << fr.mp_x << " | " << fr.mp_y << " | " << fr.mp_z << " |\n";
         o << "| Moment [" << Nm << "] (viscous) | " << fr.mv_x << " | " << fr.mv_y << " | " << fr.mv_z << " |\n\n";
@@ -790,6 +793,7 @@ bool ExportResultsDialog::writeReport(const QString& path,
             }
         }
 
+        // Mach number: from thermophysicalProperties if available
         QString tpPath = m_caseDir + "/constant/thermophysicalProperties";
         QString cpStr  = readDictValue(tpPath, "Cp");
         QString mwStr  = readDictValue(tpPath, "molWeight");
@@ -797,9 +801,9 @@ bool ExportResultsDialog::writeReport(const QString& path,
         if (!cpStr.isEmpty() && !mwStr.isEmpty() && Uref > 0) {
             double cp  = cpStr.toDouble();
             double mw  = mwStr.toDouble();
-            double R   = 8314.46 / mw;
+            double R   = 8314.46 / mw;          // specific gas constant J/kg/K
             double gamma = cp / (cp - R);
-            double T   = 293.15;
+            double T   = 293.15;                 // assume standard conditions if not set
             double a   = std::sqrt(gamma * R * T);
             mach = Uref / a;
         }
@@ -822,11 +826,10 @@ bool ExportResultsDialog::writeReport(const QString& path,
 
         if (Uref > 0 && Aref > 0) {
             double q = 0.5 * rho * Uref * Uref;
-            const WindAxes w = windAxes(inletU);
-            double Cd_total    = along(fr.fx(), fr.fy(), fr.fz(), w.d) / (q * Aref);
-            double Cd_pressure = along(fr.fp_x, fr.fp_y, fr.fp_z, w.d) / (q * Aref);
-            double Cd_viscous  = along(fr.fv_x, fr.fv_y, fr.fv_z, w.d) / (q * Aref);
-            double Cl          = along(fr.fx(), fr.fy(), fr.fz(), w.l) / (q * Aref);
+            double Cd_total    = fr.fx() / (q * Aref);
+            double Cd_pressure = fr.fp_x / (q * Aref);
+            double Cd_viscous  = fr.fv_x / (q * Aref);
+            double Cl          = fr.fz() / (q * Aref);
 
             o << "### Aerodynamic Coefficients\n\n";
             o << "| Coefficient | Value | Notes |\n|---|---|---|\n";
@@ -834,13 +837,13 @@ bool ExportResultsDialog::writeReport(const QString& path,
             o << "| Cd_pressure (wave/form drag) | " << QString::number(Cd_pressure, 'g', 5)
               << " | " << (mach > 1.0 ? "Dominated by wave drag at M>" + QString::number(mach,'f',2) : "Pressure drag") << " |\n";
             o << "| Cd_viscous (skin friction) | " << QString::number(Cd_viscous, 'g', 5) << " | Viscous drag |\n";
-            o << "| Cy (side force) | " << QString::number(along(fr.fx(), fr.fy(), fr.fz(), w.s) / (q * Aref), 'g', 5) << " | |\n";
+            o << "| Cy (side force) | " << QString::number(fr.fy() / (q * Aref), 'g', 5) << " | |\n";
             o << "| **Cl (lift)** | **" << QString::number(Cl, 'g', 5) << "** | |\n";
             if (Cl != 0 && Cd_total != 0)
                 o << "| L/D ratio | " << QString::number(Cl / Cd_total, 'g', 5) << " | |\n";
             if (Lref > 0) {
-                o << "| Cm (pitch) | " << QString::number(along(fr.mx(), fr.my(), fr.mz(), w.s) / (q * Aref * Lref), 'g', 5) << " | |\n";
-                o << "| Cn (yaw)   | " << QString::number(along(fr.mx(), fr.my(), fr.mz(), w.l) / (q * Aref * Lref), 'g', 5) << " | |\n";
+                o << "| Cm (pitch) | " << QString::number(fr.my() / (q * Aref * Lref), 'g', 5) << " | |\n";
+                o << "| Cn (yaw)   | " << QString::number(fr.mz() / (q * Aref * Lref), 'g', 5) << " | |\n";
             }
             o << "\n> q = 0.5 * rho * U_ref^2 = " << QString::number(q, 'g', 5) << " Pa\n\n";
         } else {
@@ -910,15 +913,14 @@ bool ExportResultsDialog::writeSummaryJson(const QString& path,
             double q = 0.5 * rho * Uref * Uref;
             QJsonObject coeff;
             coeff["q_Pa"] = q;
-            const WindAxes w = windAxes(readInletU());
-            coeff["Cd"]          = along(fr.fx(), fr.fy(), fr.fz(), w.d) / (q * Aref);
-            coeff["Cd_pressure"] = along(fr.fp_x, fr.fp_y, fr.fp_z, w.d) / (q * Aref);
-            coeff["Cd_viscous"]  = along(fr.fv_x, fr.fv_y, fr.fv_z, w.d) / (q * Aref);
-            coeff["Cy"]          = along(fr.fx(), fr.fy(), fr.fz(), w.s) / (q * Aref);
-            coeff["Cl"]          = along(fr.fx(), fr.fy(), fr.fz(), w.l) / (q * Aref);
+            coeff["Cd"]          = fr.fx() / (q * Aref);
+            coeff["Cd_pressure"] = fr.fp_x / (q * Aref);
+            coeff["Cd_viscous"]  = fr.fv_x / (q * Aref);
+            coeff["Cy"]          = fr.fy() / (q * Aref);
+            coeff["Cl"]          = fr.fz() / (q * Aref);
             if (Lref > 0) {
-                coeff["Cm"] = along(fr.mx(), fr.my(), fr.mz(), w.s) / (q * Aref * Lref);
-                coeff["Cn"] = along(fr.mx(), fr.my(), fr.mz(), w.l) / (q * Aref * Lref);
+                coeff["Cm"] = fr.my() / (q * Aref * Lref);
+                coeff["Cn"] = fr.mz() / (q * Aref * Lref);
             }
             QString nuStr = readDictValue(m_caseDir + "/constant/transportProperties", "nu");
             double nuVal  = nuStr.toDouble();
@@ -958,6 +960,7 @@ void ExportResultsDialog::loadCakeProperties()
         else if (key == "Uref") m_spUref->setValue(val);
         else if (key == "aoa"  && m_spAoa) m_spAoa->setValue(val);
     }
+    // Auto-detect AoA from 0/U if not saved in cakeProperties
     if (m_spAoa && m_spAoa->value() == 0.0) {
         QString uStr = readInletU();
         if (!uStr.isEmpty()) {
@@ -968,6 +971,8 @@ void ExportResultsDialog::loadCakeProperties()
                 double uz = mv.captured(3).toDouble();
                 double mag = std::sqrt(ux*ux + uz*uz);
                 if (mag > 1e-12) {
+                    // Relative to the flow axis: see the matching note above - a -X
+                    // case would otherwise detect 180 deg and clamp to 90.
                     double sgn = (ux < 0.0) ? -1.0 : 1.0;
                     double detected = std::atan2(sgn*uz, sgn*ux) * 180.0 / M_PI;
                     if (std::abs(detected) > 0.01) m_spAoa->setValue(detected);
@@ -975,6 +980,7 @@ void ExportResultsDialog::loadCakeProperties()
             }
         }
     }
+    // Fall back to whatever was last set in Domain Setup dialog
     if (m_spAoa && m_spAoa->value() == 0.0) {
         double settingsAoa = QSettings().value("domainSetup/aoa", 0.0).toDouble();
         if (std::abs(settingsAoa) > 0.01) m_spAoa->setValue(settingsAoa);
@@ -988,14 +994,16 @@ void ExportResultsDialog::saveCakeProperties() const
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return;
     QTextStream o(&f);
-    o.setCodec(QTextCodec::codecForName("UTF-8"));
-    o << "// Cake Studio reference quantities used for Re, Cd, Cl, Cm in reports\n\n";
+    o.setEncoding(QStringConverter::Utf8);
+    o << "// Cake Studio reference quantities: used for Re, Cd, Cl, Cm in reports\n\n";
     o << "rho   " << m_spRho ->value() << ";\n";
     o << "Aref  " << m_spAref->value() << ";\n";
     o << "Lref  " << m_spLref->value() << ";\n";
     o << "Uref  " << m_spUref->value() << ";\n";
     if (m_spAoa) o << "aoa   " << m_spAoa->value() << ";\n";
 }
+
+// report helpers
 
 QString ExportResultsDialog::readDictValue(const QString& filePath, const QString& key) const
 {
@@ -1029,6 +1037,7 @@ QMap<QString,QString> ExportResultsDialog::parseMeshStats() const
         auto m = reCells.match(txt);
         if (m.hasMatch()) stats["cells"] = m.captured(1);
 
+        // Floats with optional exponent (skewness is often eg. 9.8e-15)
         const QString F = R"(([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?))";
         QRegularExpression reNonOrtho(R"((?:non-orthogonality Max:|Max non-orthogonality\s*=)\s*)" + F);
         m = reNonOrtho.match(txt);
@@ -1057,6 +1066,7 @@ QStringList ExportResultsDialog::citations(const QString& turbModel) const
     refs << "Weller et al. (1998). A tensorial approach to computational continuum mechanics "
             "using object-oriented techniques. *Computers in Physics*, 12(6):620-631. [OpenFOAM]";
 
+    // Only cite TENO if it is actually used in fvSchemes
     QFile fvf(m_caseDir + "/system/fvSchemes");
     if (fvf.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QString fvTxt = fvf.readAll();

@@ -29,9 +29,11 @@
 
 namespace CFD {
 
+// field metadata
+
 struct FieldMeta {
     QString method;
-    QStringList resultTags;
+    QStringList resultTags;  // XML element names to collect (in order)
     int components;
 };
 
@@ -46,10 +48,13 @@ static const QMap<QString, FieldMeta> k_fieldMeta = {
     { "pressure_gradient", { "GetPressureGradient",  {"x","y","z"},   3 } },
 };
 
+// construction
+
 DatasetClient::DatasetClient(QObject* parent)
     : QObject(parent)
     , m_nam(new QNetworkAccessManager(this))
 {
+    // JHTDB SSL handshake is slow from WSL (~20s); set a generous timeout
     m_nam->setTransferTimeout(120 * 1000);
 }
 
@@ -75,6 +80,8 @@ int DatasetClient::componentCount(const QString& field)
 {
     return k_fieldMeta.value(field, FieldMeta{"", {}, 3}).components;
 }
+
+// public API
 
 void DatasetClient::fetchDatasetList()
 {
@@ -129,6 +136,7 @@ void DatasetClient::queryFieldRange(const QString& dataset, const QString& field
 
 void DatasetClient::cancelRange()
 {
+    // New generation first so the aborted replies' finished() is ignored
     ++m_generation;
     const auto inflight = m_inflight;
     m_inflight.clear();
@@ -150,8 +158,12 @@ void DatasetClient::clearRangeJob()
     m_rangeJob = nullptr;
 }
 
+// SOAP batch
+
 QString DatasetClient::soapNamespace(const QString& endpoint)
 {
+    // JHTDB's WSDL targetNamespace, independent of the server's URL path.
+    // Other SOAP servers keep the folder-derived namespace.
     static const QString kJhtdbNs = "http://turbulence.pha.jhu.edu/";
     const QUrl url(endpoint);
     if (url.host().endsWith("jhu.edu", Qt::CaseInsensitive))
@@ -166,6 +178,8 @@ QString DatasetClient::soapMethod(const QString& field)
 
 QString DatasetClient::spatialInterpName(SpatialInterp s, const QString& method)
 {
+    // Gradient methods take the finite-difference members of JHTDB's
+    // SpatialInterpolation enum (None_Fd4, Fd4Lag4, None_Fd6, None_Fd8)
     if (method.endsWith("Gradient")) {
         switch (s) {
         case SpatialInterp::Lag4: return "Fd4Lag4";
@@ -197,6 +211,7 @@ QByteArray DatasetClient::buildSoapBody(const QString& method, const QString& da
                .arg(points[i+1], 0, 'g', 15)
                .arg(points[i+2], 0, 'g', 15);
 
+    // Element names / enum values follow the JHTDB turbulence.asmx WSDL
     return QString(
         "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
         "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\">"
@@ -339,6 +354,8 @@ void DatasetClient::fireNextRangeStep()
     else                  queryCustom(m_rangeJob->dataset, m_rangeJob->field, t, m_rangeJob->points);
 }
 
+// reply handlers
+
 void DatasetClient::onListReply()
 {
     auto* reply  = qobject_cast<QNetworkReply*>(sender());
@@ -403,8 +420,10 @@ void DatasetClient::onQueryReply()
     reply->deleteLater();
     m_inflight.removeAll(QPointer<QNetworkReply>(reply));
 
+    // Issued before a Cancel: drop it so it cannot overwrite newer results
     if (reply->property("generation").toULongLong() != m_generation) return;
 
+    // Every failure path ends the range job so later queries are not refused
     auto fail = [this](const QString& msg) {
         emit error(msg);
         clearRangeJob();
@@ -430,6 +449,7 @@ void DatasetClient::onQueryReply()
                 : errs.first().toObject()["message"].toString()));
             return;
         }
+        // Collect doubles from a JSONObject value, trying known component orderings first.
         std::function<void(const QJsonValue&, QVector<double>&)> collect;
         collect = [&](const QJsonValue& v, QVector<double>& out) {
             if (v.isDouble()) { out << v.toDouble(); return; }
@@ -439,12 +459,14 @@ void DatasetClient::onQueryReply()
             }
             if (v.isObject()) {
                 auto obj = v.toObject();
+                // Try canonical component keys in order
                 static const QStringList ord = {"x","y","z","u","v","w","p","T"};
                 QVector<double> ordered;
                 for (const QString& k : ord)
                     if (obj.contains(k) && obj[k].isDouble())
                         ordered << obj[k].toDouble();
                 if (!ordered.isEmpty()) { out << ordered; return; }
+                // Recurse into each value (catches nested objects like {"Velocity":{...}})
                 for (const auto& k : obj.keys()) collect(obj[k], out);
             }
         };
@@ -458,6 +480,7 @@ void DatasetClient::onQueryReply()
             return;
         }
     } else if (soap) {
+        // Parse SOAP XML response: collect only the wanted element tags
         auto meta = k_fieldMeta.value(field, {"GetVelocity", {"x","y","z"}, 3});
         QSet<QString> wanted(meta.resultTags.begin(), meta.resultTags.end());
 
@@ -478,6 +501,7 @@ void DatasetClient::onQueryReply()
             return;
         }
     } else {
+        // Custom API: parse via saved response format settings
         QSettings settings("CakeCFD", "DatasetPanel");
         QString jsonPath = settings.value("customApi/jsonPath", "").toString();
         QString keysStr  = settings.value("customApi/componentKeys", "").toString();
@@ -487,6 +511,7 @@ void DatasetClient::onQueryReply()
         if (!err.isEmpty()) { fail("JSON parse: " + err); return; }
     }
 
+    // Range-job sequencing
     if (m_rangeJob && !m_rangeJob->cancelled) {
         m_rangeJob->results << result;
         ++m_rangeJob->step;
@@ -494,6 +519,7 @@ void DatasetClient::onQueryReply()
         if (m_rangeJob->step < m_rangeJob->times.size()) {
             fireNextRangeStep();
         } else {
+            // Detach before emitting so a slot may start a new range query
             RangeJob* job = m_rangeJob;
             m_rangeJob = nullptr;
             emit queryRangeFinished(job->dataset, job->field, job->times, job->results);
@@ -505,6 +531,7 @@ void DatasetClient::onQueryReply()
     }
 }
 
+// Walk one dotted segment: object key, or array index when numeric
 static QJsonValue jsonStep(const QJsonValue& cur, const QString& seg)
 {
     if (cur.isObject()) return cur.toObject().value(seg);
@@ -543,6 +570,7 @@ QVector<double> DatasetClient::parseCustomJson(const QByteArray& raw, const QStr
             if (item.isObject() && !keys.isEmpty()) {
                 const QJsonObject obj = item.toObject();
                 for (const QString& k : keys) {
+                    // Literal key first (it may itself contain dots), then nested path
                     QJsonValue v = obj.value(k);
                     if (v.isUndefined() && k.contains('.')) {
                         v = item;
@@ -560,6 +588,8 @@ QVector<double> DatasetClient::parseCustomJson(const QByteArray& raw, const QStr
         for (const auto& v : doc.array()) result << v.toDouble();
     return result;
 }
+
+// turb stats
 
 TurbStats DatasetClient::computeTurbStats(const QVector<double>& vel,
                                            double Lref, double Cmu)
@@ -590,4 +620,4 @@ TurbStats DatasetClient::computeTurbStats(const QVector<double>& vel,
     return s;
 }
 
-}
+} // namespace CFD

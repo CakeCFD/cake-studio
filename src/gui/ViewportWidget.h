@@ -34,18 +34,13 @@
 #include <vtkCubeSource.h>
 #include <vtkConeSource.h>
 #include <vtkActor.h>
-#include <QVTKOpenGLStereoWidget.h>
-#include <QElapsedTimer>
-#include <memory>
-#include <string>
-#include "FlowParticles.h"
-class QTimer;
-class vtkPolyData;
+#include <QVTKOpenGLNativeWidget.h>
 
 class QComboBox;
 class QSlider;
 class QLabel;
 
+// Small horizontal colorbar drawn purely in Qt: lives in the toolbar
 class ColorBarWidget : public QWidget {
     Q_OBJECT
 public:
@@ -99,10 +94,12 @@ public:
     void setBackgroundColor(double r, double g, double b);
     void setTheme(Theme t);
 
+    // Live domain preview: wireframe box + flow direction cone
     void updateDomainPreview(double x0, double y0, double z0,
                              double x1, double y1, double z1,
                              const QString& flowAxis);
 
+    // Project save/restore
     QJsonObject getCameraState() const;
     void        setCameraState(const QJsonObject& obj);
     QString     activeField() const;
@@ -114,8 +111,9 @@ public:
     void        setMeshHidden(bool hidden);
     void        clearScene();
     void        setProjectDir(const QString& dir) { m_projectDir = dir; }
-    void        setSliderMax(int endTime);
+    void        setSliderMax(int endTime);  // called when steps spinbox Apply is clicked
 
+    // Stream settings: getters for project save, setters for project restore
     double streamProximity() const  { return m_streamProximity; }
     int    streamDensity()   const  { return m_streamDensity;   }
     double streamTubeScale() const  { return m_streamTubeScale; }
@@ -124,7 +122,9 @@ public:
     void   setStreamTubeScale(double v) { m_streamTubeScale = v; }
 
 signals:
-    void streamlinesDiverged();
+    void streamlinesDiverged();  // emitted when velocity field is blown up
+    // Emitted when the loaded results were solved on a different axis than the one
+    // configured in Domain Setup: the case needs re-solving before streamlines mean anything.
     void streamlinesAxisMismatch(const QString& configured, const QString& actual);
 
 protected:
@@ -144,27 +144,28 @@ private:
     void applyField(const QString& field, int timeStep);
     void updateScalarBar(const QString& label, double mn, double mx);
 
-    QVTKOpenGLStereoWidget*       m_vtkWidget   = nullptr;
-    QWidget*                      m_vtkHost     = nullptr;
-    QTimer*                       m_resizeTimer = nullptr;
+    QVTKOpenGLNativeWidget*       m_vtkWidget   = nullptr;
     vtkSmartPointer<vtkRenderer>  m_renderer;
     vtkSmartPointer<vtkActor>     m_meshActor;
     vtkSmartPointer<vtkActor>     m_resultActor;
     vtkSmartPointer<vtkActor>     m_domainActor;
     vtkSmartPointer<vtkLookupTable> m_lut;
 
+    // Domain preview actors (live update from DomainSetupDialog)
     vtkSmartPointer<vtkOrientationMarkerWidget> m_axesWidget;
     vtkSmartPointer<vtkCubeSource>  m_domainCubeSource;
     vtkSmartPointer<vtkActor>       m_domainPreviewActor;
     vtkSmartPointer<vtkConeSource>  m_flowConeSource;
     vtkSmartPointer<vtkActor>       m_flowConeActor;
 
+    // OF results state
     QString      m_caseDir;
-    QString      m_projectDir;
-    QString      m_stlPath;
+    QString      m_projectDir; // set by MainWindow; used to copy dropped geometry
+    QString      m_stlPath;   // last STL loaded: persisted in .cake
     QStringList  m_timeSteps;
     QStringList  m_availableFields;
 
+    // Results toolbar widgets
     QComboBox*      m_fieldCombo  = nullptr;
     QSlider*        m_timeSlider  = nullptr;
     QLabel*         m_timeLabel   = nullptr;
@@ -175,33 +176,29 @@ private:
     QPushButton*    m_btnEdges      = nullptr;
     QPushButton*    m_btnIso        = nullptr;
     QPushButton*    m_btnStream     = nullptr;
-    QPushButton*    m_btnParticles  = nullptr;
 
+    // Iso-surface + streamline actors
     vtkSmartPointer<vtkActor> m_isoActor;
     vtkSmartPointer<vtkActor> m_streamActor;
 
+    // Cached dataset for post-processing overlays
     vtkSmartPointer<vtkDataSet> m_lastDataSet;
+    // Volumetric internal mesh: needed for streamline integration
     vtkSmartPointer<vtkDataSet> m_volumeDataSet;
+    // Cached cell->point interpolation of m_volumeDataSet. Rebuilding this on every
+    // Flow toggle re-interpolates the whole volume; it only changes when the volume
+    // mesh itself is reloaded, so cache it alongside and clear it with m_volumeDataSet.
     vtkSmartPointer<vtkDataSet> m_streamPointCache;
     int  m_lastTimeStepIndex    = 0;
-    double  m_inletSpeed           = 0.0;
-    QString m_flowAxis             = "+X";
+    double  m_inletSpeed           = 0.0;  // m/s, cached from 0/U
+    QString m_flowAxis             = "+X"; // flow direction for seeds: set from DomainSetupDialog
 
-    double m_streamProximity  = 0.10;
-    int    m_streamDensity    = 256;
-    double m_streamTubeScale  = 1.0;
-
-    vtkSmartPointer<vtkPolyData>    m_streamPaths;
-    vtkSmartPointer<vtkLookupTable> m_streamLut;
-    std::string                     m_streamVelName;
-
-    std::unique_ptr<FlowParticles> m_particles;
-    QTimer*        m_particleTimer = nullptr;
-    QElapsedTimer  m_particleClock;
+    // Streamline display settings
+    double m_streamProximity  = 0.10;  // seed padding as fraction of aircraft bbox
+    int    m_streamDensity    = 256;   // total seed count (resY * resZ); res = sqrt(this)
+    double m_streamTubeScale  = 1.0;   // multiplier on default tube radius (0.00025 * domLen)
 
     void toggleIsoSurface(bool on);
     void toggleStreamlines(bool on);
-    void toggleParticles(bool on);
-    void stopParticles();
     void showStreamSettings();
 };

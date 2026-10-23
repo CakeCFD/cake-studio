@@ -49,6 +49,10 @@
 #include <QApplication>
 #include <QTextStream>
 
+// helpers
+
+// Convert a Linux path to its Windows UNC equivalent via wslpath, then open
+// in Windows Explorer. Falls back to xdg-open on native Linux (wslpath absent).
 static void openInFileManager(const QString& path)
 {
     QString target = path.isEmpty() ? QDir::homePath() : path;
@@ -65,11 +69,14 @@ static void openInFileManager(const QString& path)
     QProcess::startDetached("xdg-open", {target});
 }
 
+// Resolve a drop URL to a usable Linux path.
+// Windows Explorer drops come as file:///C:/...: convert drive letter to WSL mount.
 static QString resolveDropUrl(const QUrl& url)
 {
     QString p = url.toLocalFile();
     if (p.isEmpty()) p = url.path();
 
+    // C:/path/file.stl  →  /mnt/c/path/file.stl
     static QRegularExpression driveRe("^([A-Za-z]):[/\\\\](.*)$");
     auto m = driveRe.match(p);
     if (m.hasMatch())
@@ -84,6 +91,8 @@ static QString itemPath(QTreeWidgetItem* item) {
 static CaseItemType itemType(QTreeWidgetItem* item) {
     return item ? (CaseItemType)item->data(0, RoleType).toInt() : TypeRoot;
 }
+
+// construction
 
 CaseTreePanel::CaseTreePanel(QWidget* parent) : QWidget(parent)
 {
@@ -109,6 +118,8 @@ CaseTreePanel::CaseTreePanel(QWidget* parent) : QWidget(parent)
     m_tree->setStyleSheet("QTreeWidget { font-size: 11px; border: none; }"
                           "QTreeWidget::item { padding: 2px 0; }"
                           "QTreeWidget::item:hover { background: rgba(255,255,255,0.05); }");
+    // Qt delivers drag events to the tree's internal viewport child, not to this widget.
+    // Install an event filter on it so drops work when the user drags files onto the panel.
     m_tree->viewport()->setAcceptDrops(true);
     m_tree->viewport()->installEventFilter(this);
     layout->addWidget(m_tree, 1);
@@ -128,18 +139,21 @@ CaseTreePanel::CaseTreePanel(QWidget* parent) : QWidget(parent)
             this, &CaseTreePanel::onContextMenu);
 }
 
+// public slots
+
 void CaseTreePanel::setCaseDir(const QString& dir)
 {
     m_caseDir = dir;
     populate();
     emit itemSelected((int)TypeRoot, dir, dir);
 
+    // Watch key subdirectories for live auto-refresh
     if (!m_watcher) {
         m_watcher = new QFileSystemWatcher(this);
 
         m_refreshTimer = new QTimer(this);
         m_refreshTimer->setSingleShot(true);
-        m_refreshTimer->setInterval(600);
+        m_refreshTimer->setInterval(600);   // debounce: wait 600ms after last event
         connect(m_refreshTimer, &QTimer::timeout, this, &CaseTreePanel::refresh);
 
         connect(m_watcher, &QFileSystemWatcher::directoryChanged,
@@ -148,6 +162,7 @@ void CaseTreePanel::setCaseDir(const QString& dir)
                 this, [this](const QString&) { m_refreshTimer->start(); });
     }
 
+    // Re-watch the new case directories
     if (!m_watcher->directories().isEmpty())
         m_watcher->removePaths(m_watcher->directories());
 
@@ -161,13 +176,15 @@ void CaseTreePanel::setCaseDir(const QString& dir)
 
 void CaseTreePanel::refresh() { populate(); }
 
+// populate
+
 QTreeWidgetItem* CaseTreePanel::addSection(const QString& label, CaseItemType sectionType)
 {
     auto* item = new QTreeWidgetItem(m_tree, QStringList{label});
     QFont f = item->font(0); f.setBold(true); item->setFont(0, f);
     item->setForeground(0, QColor(0x64, 0xb5, 0xf6));
     item->setData(0, RoleType, (int)TypeSection);
-    item->setData(0, RoleStepIndex, (int)sectionType);
+    item->setData(0, RoleStepIndex, (int)sectionType); // reuse field to ID which section
     return item;
 }
 
@@ -183,6 +200,7 @@ void CaseTreePanel::populate()
 
     m_statusLabel->setText(QFileInfo(m_caseDir).fileName());
 
+    // Geometry
     auto* geoSec = addSection("Geometry", TypeSection);
     QString triSurf = m_caseDir + "/constant/triSurface";
     QDir tsDir(triSurf);
@@ -202,6 +220,7 @@ void CaseTreePanel::populate()
     }
     geoSec->setExpanded(true);
 
+    // Mesh
     auto* meshSec = addSection("Mesh", TypeSection);
     bool hasMesh = QDir(m_caseDir + "/constant/polyMesh").exists();
     if (hasMesh) {
@@ -223,6 +242,7 @@ void CaseTreePanel::populate()
     }
     meshSec->setExpanded(hasMesh);
 
+    // Boundary Conditions
     auto* bcSec = addSection("Boundary Conditions", TypeSection);
     QDir zeroDir(m_caseDir + "/0");
     if (zeroDir.exists()) {
@@ -237,12 +257,14 @@ void CaseTreePanel::populate()
     }
     bcSec->setExpanded(false);
 
+    // Results
     auto* resSec = addSection("Results", TypeSection);
     static QRegularExpression numRe("^\\d+(\\.\\d+)?$");
     for (const QString& e : QDir(m_caseDir).entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         bool ok; double v = e.toDouble(&ok);
         if (ok && v > 0) m_timeSteps << e;
     }
+    // Numeric order (0.5 < 2 < 10): indices must match ViewportWidget's time list
     std::sort(m_timeSteps.begin(), m_timeSteps.end(),
               [](const QString& a, const QString& b) { return a.toDouble() < b.toDouble(); });
     if (!m_timeSteps.isEmpty()) {
@@ -261,6 +283,7 @@ void CaseTreePanel::populate()
         nr->setData(0, RoleType, (int)TypeSection);
     }
 
+    // System
     auto* sysSec = addSection("System", TypeSection);
     QDir sysDir(m_caseDir + "/system");
     if (sysDir.exists()) {
@@ -274,11 +297,14 @@ void CaseTreePanel::populate()
     sysSec->setExpanded(false);
 }
 
+// single click
+
 void CaseTreePanel::onItemClicked(QTreeWidgetItem* item, int)
 {
     if (!item) return;
     CaseItemType t = itemType(item);
 
+    // Always broadcast the selection for the Properties panel
     emit itemSelected((int)t, itemPath(item), m_caseDir);
 
     switch (t) {
@@ -304,10 +330,13 @@ void CaseTreePanel::onItemClicked(QTreeWidgetItem* item, int)
 
 void CaseTreePanel::onItemDoubleClicked(QTreeWidgetItem* item, int)
 {
+    // Double-click on files opens editor; on geo loads viewport (already done by click)
     CaseItemType t = itemType(item);
     if (t == TypeBCFile || t == TypeSysFile)
         openFileEditor(itemPath(item));
 }
+
+// context menu
 
 void CaseTreePanel::onContextMenu(const QPoint& pos)
 {
@@ -315,6 +344,7 @@ void CaseTreePanel::onContextMenu(const QPoint& pos)
     QMenu menu(this);
 
     if (!item) {
+        // Clicked blank space
         menu.addAction("Refresh", this, &CaseTreePanel::refresh);
         menu.addAction("Open in File Manager", this, [this]{
             openInFileManager(m_caseDir);
@@ -325,6 +355,7 @@ void CaseTreePanel::onContextMenu(const QPoint& pos)
 
     CaseItemType t = itemType(item);
 
+    // Geo file
     if (t == TypeGeoFile) {
         menu.addAction("Load in Viewport", this, [this, item]{
             QString p = itemPath(item);
@@ -339,12 +370,14 @@ void CaseTreePanel::onContextMenu(const QPoint& pos)
         menu.addAction("Delete", this, [this, item]{ deleteItem(item); });
     }
 
+    // Mesh info
     else if (t == TypeMeshInfo) {
         menu.addAction("Show in File Manager", this, [item]{
             openInFileManager(itemPath(item));
         });
     }
 
+    // BC file
     else if (t == TypeBCFile) {
         menu.addAction("Open Editor", this, [this, item]{ openFileEditor(itemPath(item)); });
         menu.addAction("Copy Path",   this, [item]{ QApplication::clipboard()->setText(itemPath(item)); });
@@ -352,6 +385,7 @@ void CaseTreePanel::onContextMenu(const QPoint& pos)
         menu.addAction("Delete", this, [this, item]{ deleteItem(item); });
     }
 
+    // Sys file
     else if (t == TypeSysFile) {
         menu.addAction("Open Editor", this, [this, item]{ openFileEditor(itemPath(item)); });
         menu.addAction("Copy Path",   this, [item]{ QApplication::clipboard()->setText(itemPath(item)); });
@@ -359,6 +393,7 @@ void CaseTreePanel::onContextMenu(const QPoint& pos)
         menu.addAction("Delete", this, [this, item]{ deleteItem(item); });
     }
 
+    // Result step
     else if (t == TypeResultStep) {
         int idx = item->data(0, RoleStepIndex).toInt();
         menu.addAction("Load This Step", this, [this, idx]{
@@ -375,9 +410,11 @@ void CaseTreePanel::onContextMenu(const QPoint& pos)
         });
     }
 
+    // Section header
     else if (t == TypeSection) {
         int sectionHint = item->data(0, RoleStepIndex).toInt();
         QString label = item->text(0);
+        // Placeholder child "(empty: ...)" inside a section: use parent's label
         if (label.startsWith("(") && item->parent())
             label = item->parent()->text(0);
 
@@ -423,6 +460,8 @@ void CaseTreePanel::onContextMenu(const QPoint& pos)
         menu.exec(m_tree->viewport()->mapToGlobal(pos));
 }
 
+// file editor
+
 void CaseTreePanel::openFileEditor(const QString& path)
 {
     if (path.isEmpty()) return;
@@ -452,6 +491,7 @@ void CaseTreePanel::openFileEditor(const QString& path)
     pathLabel->setStyleSheet("color: #666; font-size: 10px;");
     layout->addWidget(pathLabel);
 
+    // Button row: Save (to case file) | Save Globally (to user templates) | Close
     auto* btnRow       = new QHBoxLayout;
     auto* btnSave      = new QPushButton("Save", dlg);
     btnSave->setToolTip("Write back to the case file");
@@ -500,6 +540,8 @@ void CaseTreePanel::openFileEditor(const QString& path)
     dlg->show();
 }
 
+// delete
+
 void CaseTreePanel::deleteItem(QTreeWidgetItem* item)
 {
     QString path = itemPath(item);
@@ -511,6 +553,8 @@ void CaseTreePanel::deleteItem(QTreeWidgetItem* item)
     refresh();
 }
 
+// add file
+
 void CaseTreePanel::addGeometryFile()
 {
     if (m_caseDir.isEmpty()) return;
@@ -519,6 +563,8 @@ void CaseTreePanel::addGeometryFile()
         "Geometry Files (*.stl *.STL *.obj *.OBJ)");
     if (src.isEmpty()) return;
 
+    // Wipe all existing geometry so only one mesh lives in the project at a time,
+    // except the chosen file itself when it already lives in triSurface
     QString triSurfPath = m_caseDir + "/constant/triSurface";
     QString dest = triSurfPath + "/" + QFileInfo(src).fileName();
     const QString srcCanon = QFileInfo(src).canonicalFilePath();
@@ -567,6 +613,10 @@ void CaseTreePanel::addDictFile(const QString& dir, const QString& defaultName)
     openFileEditor(path);
 }
 
+// drag and drop
+
+// The QTreeWidget's internal viewport child intercepts all drag events before they
+// reach this widget. Forward them here.
 bool CaseTreePanel::eventFilter(QObject* obj, QEvent* event)
 {
     if (obj == m_tree->viewport()) {
@@ -607,6 +657,7 @@ void CaseTreePanel::dropEvent(QDropEvent* e)
             !src.endsWith(".obj", Qt::CaseInsensitive)) continue;
 
         QString dest = m_caseDir + "/constant/triSurface/" + QFileInfo(src).fileName();
+        // Dropping a file that already lives in triSurface: removing dest would delete the source
         if (QFileInfo(src).canonicalFilePath() != QFileInfo(dest).canonicalFilePath()) {
             if (QFile::exists(dest)) QFile::remove(dest);
             QFile::copy(src, dest);
@@ -622,9 +673,11 @@ void CaseTreePanel::dropEvent(QDropEvent* e)
     refresh();
     e->acceptProposedAction();
 
+    // Update the Properties panel to show the dropped geometry immediately
     if (!lastDropped.isEmpty())
         emit itemSelected((int)TypeGeoFile, lastDropped, m_caseDir);
 
+    // Offer domain setup for STL files (the geometry snappyHexMesh needs)
     if (!lastDropped.isEmpty() && lastDropped.endsWith(".stl", Qt::CaseInsensitive)) {
         auto* dlg = new DomainSetupDialog(lastDropped, m_caseDir, this);
         connect(dlg, &DomainSetupDialog::filesGenerated, this, &CaseTreePanel::refresh);

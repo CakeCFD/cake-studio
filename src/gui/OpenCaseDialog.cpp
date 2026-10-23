@@ -18,7 +18,6 @@
 \*---------------------------------------------------------------------------*/
 
 #include "FileBrowserDialog.h"
-#include "themes/ThemeEngine.h"
 #include "OpenCaseDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -39,6 +38,7 @@ OpenCaseDialog::OpenCaseDialog(QWidget* parent)
     auto* root = new QVBoxLayout(this);
     root->setSpacing(12);
 
+    // Path row
     auto* pathGroup = new QGroupBox("Case Directory");
     auto* pathRow   = new QHBoxLayout(pathGroup);
 
@@ -53,13 +53,13 @@ OpenCaseDialog::OpenCaseDialog(QWidget* parent)
     pathRow->addWidget(browseBtn);
     root->addWidget(pathGroup);
 
+    // Case preview
     auto* previewGroup = new QGroupBox("Case Contents");
     auto* form = new QFormLayout(previewGroup);
 
     auto makeInfo = [](const QString& placeholder) {
         auto* l = new QLabel(placeholder);
-        l->setStyleSheet("font-size: 11px;");
-        ThemeEngine::setRole(l, "muted");
+        l->setStyleSheet("color: #6c7086; font-size: 11px;");
         return l;
     };
 
@@ -73,6 +73,7 @@ OpenCaseDialog::OpenCaseDialog(QWidget* parent)
 
     root->addWidget(previewGroup);
 
+    // Buttons
     auto* btns = new QDialogButtonBox;
     m_loadBtn  = btns->addButton("Load Case", QDialogButtonBox::AcceptRole);
     btns->addButton(QDialogButtonBox::Cancel);
@@ -105,13 +106,12 @@ void OpenCaseDialog::onDirChanged(const QString& path)
 
 void OpenCaseDialog::scanCase(const QString& dir)
 {
-    const QString okC = ThemeEngine::instance().colors().success.name();
-    const QString badC = ThemeEngine::instance().colors().danger.name();
-    auto ok  = [okC](const QString& s) { return "<span style='color:" + okC + ";'>" + s + "</span>"; };
-    auto warn = [badC](const QString& s) { return "<span style='color:" + badC + ";'>" + s + "</span>"; };
+    auto ok  = [](const QString& s) { return "<span style='color:#a6e3a1;'>" + s + "</span>"; };
+    auto warn = [](const QString& s) { return "<span style='color:#f38ba8;'>" + s + "</span>"; };
 
     bool valid = false;
 
+    // STL geometry
     QDir triSurf(dir + "/constant/triSurface");
     QStringList stls = triSurf.entryList({"*.stl","*.STL"}, QDir::Files);
     if (!stls.isEmpty()) {
@@ -121,11 +121,13 @@ void OpenCaseDialog::scanCase(const QString& dir)
         m_stlInfo->setText(warn("None found in constant/triSurface"));
     }
 
+    // Mesh
     bool hasMesh = QFileInfo(dir + "/constant/polyMesh/points").exists()
                 || QFileInfo(dir + "/constant/polyMesh/faces").exists();
     m_meshInfo->setText(hasMesh ? ok("polyMesh present") : warn("No polyMesh found (run blockMesh/snappyHexMesh first)"));
     if (hasMesh) valid = true;
 
+    // Results (time directories)
     QDir caseDir(dir);
     QStringList timeDirs;
     for (const QString& entry : caseDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
@@ -134,6 +136,7 @@ void OpenCaseDialog::scanCase(const QString& dir)
         if (isNum && entry != "0") timeDirs << entry;
     }
     if (!timeDirs.isEmpty()) {
+        // Numeric order: as strings "1000" < "200"
         std::sort(timeDirs.begin(), timeDirs.end(),
                   [](const QString& a, const QString& b) { return a.toDouble() < b.toDouble(); });
         m_resultsInfo->setText(ok(QString("%1 time step(s): latest: %2")
@@ -143,8 +146,10 @@ void OpenCaseDialog::scanCase(const QString& dir)
         m_resultsInfo->setText(warn("No result time directories found"));
     }
 
+    // Enable Load only if at least something useful was found
     m_loadBtn->setEnabled(valid && QDir(dir).exists());
 
+    // Allow text to render as HTML
     m_stlInfo->setTextFormat(Qt::RichText);
     m_meshInfo->setTextFormat(Qt::RichText);
     m_resultsInfo->setTextFormat(Qt::RichText);

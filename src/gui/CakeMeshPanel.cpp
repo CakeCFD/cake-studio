@@ -18,7 +18,6 @@
 \*---------------------------------------------------------------------------*/
 
 #include "FileBrowserDialog.h"
-#include "themes/ThemeEngine.h"
 #include <QDir>
 #include <QFileInfo>
 #include "CakeMeshPanel.h"
@@ -40,6 +39,8 @@
 #include <QClipboard>
 #include <QToolTip>
 
+// spin helpers
+
 static QDoubleSpinBox* dbl(double val, double lo, double hi, double step, int dec = 4) {
     auto* s = new QDoubleSpinBox;
     s->setRange(lo, hi); s->setSingleStep(step);
@@ -52,6 +53,8 @@ static QSpinBox* isp(int val, int lo, int hi) {
     return s;
 }
 
+// construction
+
 CakeMeshPanel::CakeMeshPanel(QWidget* parent) : QWidget(parent)
 {
     m_process = new QProcess(this);
@@ -60,8 +63,10 @@ CakeMeshPanel::CakeMeshPanel(QWidget* parent) : QWidget(parent)
             this, &CakeMeshPanel::onProcessOutput);
     connect(m_process, QOverload<int,QProcess::ExitStatus>::of(&QProcess::finished),
             this, &CakeMeshPanel::onProcessFinished);
+    // finished() never fires when bash cannot be started: fail the queue here so
+    // the panel does not stay stuck in the running state
     connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError err) {
-        if (err != QProcess::FailedToStart) return;
+        if (err != QProcess::FailedToStart) return;  // other errors still emit finished()
         log("  [FAILED] could not start bash: " + m_process->errorString());
         m_queueFailed = true;
         m_cmdQueue.clear();
@@ -84,18 +89,23 @@ CakeMeshPanel::CakeMeshPanel(QWidget* parent) : QWidget(parent)
     m_log->setFont(QFont("Monospace", 9));
     root->addWidget(m_log);
 
+    // Action bar: Generate → Run Mesh → Export to Cake Studio
     m_status      = new QLabel("Ready.");
     m_btnGenerate = new QPushButton("Generate Case");
     m_btnRunMesh  = new QPushButton("Run Mesh");
     m_btnExport   = new QPushButton("Export to Cake Studio");
     m_btnRunMesh->setEnabled(false);
     m_btnExport->setEnabled(false);
-    ThemeEngine::setRole(m_btnExport, "primary");
+    m_btnExport->setStyleSheet(
+        "QPushButton:enabled { background:#a6e3a1; color:#1e1e2e; font-weight:bold; }");
 
-    auto makeCopyBtn = [this](const QString& label, const QString& role,
+    auto makeCopyBtn = [this](const QString& label, const QString& color,
                                const QStringList& keywords) {
         auto* btn = new QPushButton(label);
-        ThemeEngine::setRole(btn, role);
+        btn->setStyleSheet(QString(
+            "QPushButton { font-size:10px; padding:2px 6px; color:%1; border:1px solid %1; "
+            "border-radius:3px; background:transparent; }"
+            "QPushButton:hover { background:%1; color:palette(button-text); }").arg(color));
         connect(btn, &QPushButton::clicked, this, [this, keywords, btn]() {
             QStringList lines = m_log->toPlainText().split('\n');
             QStringList blocks;
@@ -134,9 +144,9 @@ CakeMeshPanel::CakeMeshPanel(QWidget* parent) : QWidget(parent)
         return btn;
     };
 
-    auto* copyWarnBtn = makeCopyBtn("⚠ Copy Warnings", "copyWarn",
+    auto* copyWarnBtn = makeCopyBtn("⚠ Copy Warnings", "#f9e2af",
                                     {"Warning", "WARNING", "WARN", "warning"});
-    auto* copyErrBtn  = makeCopyBtn("✕ Copy Errors",   "copyErr",
+    auto* copyErrBtn  = makeCopyBtn("✕ Copy Errors",   "#f38ba8",
                                     {"Error", "ERROR", "FATAL", "FAILED", "error:", "fatal"});
 
     auto* bar = new QHBoxLayout;
@@ -160,20 +170,25 @@ void CakeMeshPanel::setProjectDir(const QString& dir)
     if (dir.isEmpty()) return;
     QString norm = QDir(dir).absolutePath();
     QFileInfo fi(norm);
-    if (m_outputDir) m_outputDir->setText(fi.absolutePath());
+    if (m_outputDir) m_outputDir->setText(fi.absolutePath()); // parent dir
     if (m_caseName && m_caseName->text().trimmed().isEmpty())
-        m_caseName->setText(fi.fileName());
+        m_caseName->setText(fi.fileName());                   // project name
+    // The geometry patch row is labelled from the case name, so refresh the table
+    // once the new project's name is in place.
     if (m_bcTable) buildBCTable();
 }
 void CakeMeshPanel::onThemeChanged()
 {
+    // Rebuild BC table so separator and cell widgets pick up the new palette
     if (m_bcTable) buildBCTable();
 }
 
 QJsonObject CakeMeshPanel::getState() const
 {
     QJsonObject o;
+    // Geometry
     if (m_geoPath)         o["geo_path"]          = m_geoPath->text();
+    // Mesh settings
     if (m_padding)         o["padding"]            = m_padding->value();
     if (m_bgCells)         o["bg_cells"]           = m_bgCells->value();
     if (m_maxGlobal)       o["max_global"]         = m_maxGlobal->value();
@@ -185,6 +200,7 @@ QJsonObject CakeMeshPanel::getState() const
     if (m_layerExpansion)  o["layer_expansion"]    = m_layerExpansion->value();
     if (m_firstLayerThick) o["first_layer_thick"]  = m_firstLayerThick->value();
     if (m_minThickness)    o["min_thickness"]      = m_minThickness->value();
+    // Physics / BCs
     if (m_turbulence)      o["turbulence"]         = m_turbulence->currentText();
     if (m_velocity)        o["velocity"]           = m_velocity->value();
     if (m_aoa)             o["aoa"]                = m_aoa->value();
@@ -198,11 +214,14 @@ QJsonObject CakeMeshPanel::getState() const
 
 void CakeMeshPanel::setState(const QJsonObject& o)
 {
+    // Geometry: set path then defer the viewport load so VTK's OpenGL context
+    // is guaranteed to be initialized before we call Render().
     if (o.contains("geo_path") && m_geoPath) {
         m_geoPath->setText(o["geo_path"].toString());
         if (!o["geo_path"].toString().isEmpty())
             QTimer::singleShot(0, this, &CakeMeshPanel::onLoadGeometry);
     }
+    // Mesh settings
     if (o.contains("padding")           && m_padding)         m_padding->setValue(o["padding"].toDouble());
     if (o.contains("bg_cells")          && m_bgCells)         m_bgCells->setValue(o["bg_cells"].toInt());
     if (o.contains("max_global")        && m_maxGlobal)       m_maxGlobal->setValue(o["max_global"].toInt());
@@ -214,6 +233,7 @@ void CakeMeshPanel::setState(const QJsonObject& o)
     if (o.contains("layer_expansion")   && m_layerExpansion)  m_layerExpansion->setValue(o["layer_expansion"].toDouble());
     if (o.contains("first_layer_thick") && m_firstLayerThick) m_firstLayerThick->setValue(o["first_layer_thick"].toDouble());
     if (o.contains("min_thickness")     && m_minThickness)    m_minThickness->setValue(o["min_thickness"].toDouble());
+    // Physics / BCs
     if (o.contains("turbulence") && m_turbulence)  m_turbulence->setCurrentText(o["turbulence"].toString());
     if (o.contains("velocity")   && m_velocity)    m_velocity->setValue(o["velocity"].toDouble());
     if (o.contains("aoa")        && m_aoa)         m_aoa->setValue(o["aoa"].toDouble());
@@ -223,6 +243,8 @@ void CakeMeshPanel::setState(const QJsonObject& o)
     if (o.contains("cores")      && m_cores)       m_cores->setValue(o["cores"].toInt());
     if (o.contains("case_dir")) {
         m_caseDir = o["case_dir"].toString();
+        // Gate on a case having actually been written, not merely on the output
+        // directory existing, and unlock Export only once a mesh is on disk.
         bool haveCase = !m_caseDir.isEmpty() &&
                         QFile::exists(m_caseDir + "/system/blockMeshDict");
         if (m_btnRunMesh) m_btnRunMesh->setEnabled(haveCase);
@@ -239,13 +261,19 @@ void CakeMeshPanel::reset()
     if (m_caseName)  m_caseName->clear();
     if (m_outputDir) m_outputDir->clear();
     if (m_log)       m_log->clear();
+    // Without this the stale case dir keeps Run Mesh / Export unlocked after
+    // New Project, letting the user skip straight past Generate Case.
     m_caseDir.clear();
     if (m_btnRunMesh) m_btnRunMesh->setEnabled(false);
     if (m_btnExport)  m_btnExport->setEnabled(false);
     if (m_btnGenerate) m_btnGenerate->setEnabled(true);
     m_geo.reset();
+    // Rebuild the BC table too: otherwise the previous project's patch rows and its
+    // geometry patch name survive into the new project.
     if (m_bcTable) buildBCTable();
 }
+
+// Geometry tab
 
 void CakeMeshPanel::buildGeometryTab(QTabWidget* tabs)
 {
@@ -277,6 +305,8 @@ void CakeMeshPanel::buildGeometryTab(QTabWidget* tabs)
 
     tabs->addTab(w, "① Geometry");
 }
+
+// Mesh tab
 
 void CakeMeshPanel::buildMeshTab(QTabWidget* tabs)
 {
@@ -324,6 +354,8 @@ void CakeMeshPanel::buildMeshTab(QTabWidget* tabs)
     tabs->addTab(scroll, "② Mesh");
 }
 
+// Physics / BCs tab
+
 void CakeMeshPanel::buildPhysicsTab(QTabWidget* tabs)
 {
     auto* scroll = new QScrollArea;
@@ -332,6 +364,7 @@ void CakeMeshPanel::buildPhysicsTab(QTabWidget* tabs)
     auto* lay = new QVBoxLayout(w);
     lay->setSpacing(8);
 
+    // Flow Settings
     auto* settBox  = new QGroupBox("Flow Settings");
     auto* settForm = new QFormLayout(settBox);
     m_turbulence = new QComboBox;
@@ -344,6 +377,7 @@ void CakeMeshPanel::buildPhysicsTab(QTabWidget* tabs)
     settForm->addRow("Angle of attack (°):",          m_aoa);
     settForm->addRow("Kinematic viscosity ν (m²/s):", m_nu);
 
+    // Boundary Conditions Table
     auto* bcBox = new QGroupBox("Boundary Conditions");
     auto* bcLay = new QVBoxLayout(bcBox);
 
@@ -366,6 +400,7 @@ void CakeMeshPanel::buildPhysicsTab(QTabWidget* tabs)
     bcLay->addWidget(m_bcTable);
     bcLay->addWidget(bcHint);
 
+    // Output
     auto* outBox  = new QGroupBox("Output");
     auto* outForm = new QFormLayout(outBox);
     m_caseName  = new QLineEdit("cfdCase");
@@ -386,6 +421,7 @@ void CakeMeshPanel::buildPhysicsTab(QTabWidget* tabs)
 
     connect(outBrowse, &QPushButton::clicked, this, &CakeMeshPanel::onBrowseOutputDir);
 
+    // When case name changes, update the geometry patch row name (row 7)
     connect(m_caseName, &QLineEdit::textChanged, this, [this](const QString& name) {
         if (m_bcTable && m_bcTable->rowCount() > 7) {
             auto* item = m_bcTable->item(7, 0);
@@ -399,8 +435,11 @@ void CakeMeshPanel::buildPhysicsTab(QTabWidget* tabs)
     scroll->setWidget(w);
     tabs->addTab(scroll, "③ Physics && BCs");
 
+    // Populate BC table after all widgets exist
     buildBCTable();
 }
+
+// BC Table construction
 
 void CakeMeshPanel::buildBCTable()
 {
@@ -411,14 +450,30 @@ void CakeMeshPanel::buildBCTable()
         "Symmetry", "Slip", "Zero Gradient"
     };
 
-    // Never call setStyleSheet() on these cell widgets because it detaches them from the global theme.
+    // NOTE: do not call setStyleSheet() on the cell widgets below. ThemeEngine applies
+    // an application-wide stylesheet that already styles QComboBox/QLineEdit for the
+    // active theme, and a widget-level stylesheet overrides the application one - so
+    // styling them here disconnects them from the theme instead of theming them.
+    // Size them with setFont() and setFrame() only, and let the global sheet paint.
     auto shrinkFont = [](QWidget* w) {
         QFont f = w->font();
         f.setPointSize(8);
         w->setFont(f);
     };
 
-    const ThemeColors& tc = ThemeEngine::instance().colors();
+    // Row tints must be DESATURATED explicitly. Two hue-preserving approaches failed
+    // here: QColor::lighter() scales HSL lightness but keeps hue, and blending toward
+    // QPalette::Text keeps hue too because this theme's text (#cdd6f4) is itself
+    // blue-lavender. Either way a near-black blue-tinted background (#1e1e2e) turns
+    // into a saturated navy band. Build the tint from lightness alone (saturation 0)
+    // so it reads as a neutral grey lift under any palette.
+    const QColor kWin  = m_bcTable->palette().color(QPalette::Window);
+    const QColor kBase = m_bcTable->palette().color(QPalette::Base);
+    const QColor kTxt  = m_bcTable->palette().color(QPalette::Text);
+    auto kTint = [](const QColor& c, int deltaL) {
+        const int l = qBound(0, c.lightness() + deltaL, 255);
+        return QColor::fromHsl(0, 0, l);   // hue 0 + saturation 0 == pure grey
+    };
 
     struct RowDef { QString name; int typeIdx; bool showValue; double defaultVal; };
 
@@ -426,10 +481,11 @@ void CakeMeshPanel::buildBCTable()
                              ? m_caseName->text() : "cfdCase";
     const double  defV     = m_velocity ? m_velocity->value() : 10.0;
 
+    // Domain rows then separator then geometry row
     const QList<RowDef> domainRows = {
-        {"inlet",   1, true,  defV},
-        {"outlet",  2, false, 0.0},
-        {"top",     3, false, 0.0},
+        {"inlet",   1, true,  defV},   // Velocity Inlet
+        {"outlet",  2, false, 0.0},    // Pressure Outlet
+        {"top",     3, false, 0.0},    // Symmetry
         {"bottom",  3, false, 0.0},
         {"front",   3, false, 0.0},
         {"back",    3, false, 0.0},
@@ -447,23 +503,35 @@ void CakeMeshPanel::buildBCTable()
             auto* sep = new QTableWidgetItem(" Geometry Surfaces ");
             sep->setFlags(Qt::ItemIsEnabled);
             sep->setTextAlignment(Qt::AlignCenter);
-            sep->setForeground(tc.textMuted);
+            sep->setBackground(kTint(kWin, 26));
+            sep->setForeground(kTxt);
             m_bcTable->setItem(row, 0, sep);
             m_bcTable->setSpan(row, 0, 1, 3);
             m_bcTable->setRowHeight(row, 18);
             return;
         }
 
+        // Geometry row: a faint lift off the base, same neutral grey as the separator.
+        const QColor geoBg = kTint(kBase, 14);
+        const QColor geoFg = kTxt;
+
+        // Col 0: patch name
         auto* nameItem = new QTableWidgetItem(patchName);
         nameItem->setFlags(Qt::ItemIsEnabled);
         nameItem->setFont([&]{ QFont f; f.setFamily("Monospace"); f.setPointSize(9); return f; }());
+        if (isGeometry) {
+            nameItem->setBackground(geoBg);
+            nameItem->setForeground(geoFg);
+        }
         m_bcTable->setItem(row, 0, nameItem);
 
+        // Col 1: type combo
         auto* combo = new QComboBox;
         combo->addItems(kTypes);
         combo->setCurrentIndex(typeIdx);
         shrinkFont(combo);
 
+        // Col 2: value edit
         auto* valEdit = new QLineEdit(valueEditable ? QString::number(value) : "-");
         valEdit->setEnabled(valueEditable);
         valEdit->setAlignment(Qt::AlignRight);
@@ -471,6 +539,7 @@ void CakeMeshPanel::buildBCTable()
         valEdit->setPlaceholderText("m/s");
         if (!valueEditable) valEdit->setFrame(false);
 
+        // When type changes, enable/disable value and update placeholder
         connect(combo, &QComboBox::currentTextChanged, this,
                 [valEdit](const QString& t) {
                     bool needsVal = (t == "Velocity Inlet");
@@ -488,15 +557,23 @@ void CakeMeshPanel::buildBCTable()
         m_bcTable->setCellWidget(row, 1, combo);
         m_bcTable->setCellWidget(row, 2, valEdit);
 
+        // The geometry row is already marked by the tinted name cell above; tinting the
+        // cell widgets too would need a widget stylesheet, which would override the
+        // theme's own QComboBox/QLineEdit rules and strand them off-theme.
     };
 
+    // Add domain rows
     for (const auto& r : domainRows)
         addRow(r.name, r.typeIdx, r.showValue, r.defaultVal);
 
-    addRow("", 0, false, 0.0, true);
+    // Separator
+    addRow("", 0, false, 0.0, /*isSeparator=*/true);
 
-    addRow(geomName, 0, false, 0.0, false, true);
+    // Geometry patch (named after caseName, Wall by default)
+    addRow(geomName, 0, false, 0.0, /*isSeparator=*/false, /*isGeometry=*/true);
 }
+
+// Slots
 
 void CakeMeshPanel::onBrowseGeometry()
 {
@@ -517,7 +594,7 @@ void CakeMeshPanel::onLoadGeometry()
 
     auto geo = CFD::CADGeometry::fromFile(path);
     if (!geo->isValid()) {
-        m_geoStats->setText("<b style='color:" + ThemeEngine::instance().colors().danger.name() + "'>Failed:</b> " + geo->importResult().errorMsg);
+        m_geoStats->setText("<b style='color:#f38ba8'>Failed:</b> " + geo->importResult().errorMsg);
         m_status->setText("Load failed.");
         return;
     }
@@ -554,6 +631,7 @@ void CakeMeshPanel::onBrowseOutputDir()
 
 void CakeMeshPanel::onGenerateCase()
 {
+    // Auto-load if path is set but the user never clicked Load
     if (!m_geo || !m_geo->isValid()) {
         QString path = m_geoPath->text().trimmed();
         if (!path.isEmpty() && QFile::exists(path)) {
@@ -596,15 +674,18 @@ void CakeMeshPanel::onGenerateCase()
     cp.nBoundaryLayers = m_nLayers->value();
     cp.inflowVelocity  = m_velocity->value();
     cp.aoaDeg          = m_aoa ? m_aoa->value() : 0.0;
+    // V1 is -X everywhere; BlockMeshWriter places the inlet on the X-max face to
+    // match. A "+X" default here would negate U against that mesh and reverse the flow.
     cp.flowAxis        = QSettings().value("domainSetup/flowAxis", "-X").toString();
     cp.nu              = m_nu->value();
-    cp.solver          = CFD::SolverType::SimpleFoam;
+    cp.solver          = CFD::SolverType::SimpleFoam; // Cake Studio handles solver selection
     cp.turbulence      = turbs.value(m_turbulence->currentText(), CFD::TurbulenceModel::KOmegaSST);
 
+    // Read per-patch BCs from the table (skip separator rows which have no cell widget)
     if (m_bcTable) {
         for (int i = 0; i < m_bcTable->rowCount(); ++i) {
             auto* combo = qobject_cast<QComboBox*>(m_bcTable->cellWidget(i, 1));
-            if (!combo) continue;
+            if (!combo) continue; // separator row
             auto* nameItem = m_bcTable->item(i, 0);
             if (!nameItem || nameItem->text().isEmpty()) continue;
 
@@ -636,6 +717,8 @@ void CakeMeshPanel::onGenerateCase()
     log("Case written: " + m_caseDir);
     m_status->setText("Case ready: click Run Mesh.");
     m_btnRunMesh->setEnabled(true);
+    // Regenerating invalidates any existing polyMesh, so Export must re-lock
+    // until Run Mesh succeeds again.
     m_btnExport->setEnabled(false);
     setRunning(false);
 }
@@ -646,7 +729,7 @@ void CakeMeshPanel::onRunMesh()
 
     QString env  = ofEnvPrefix();
     QString quoted = m_caseDir;
-    quoted.replace("'", "'\"'\"'");
+    quoted.replace("'", "'\"'\"'");   // close quote, literal ', reopen
     QString base = env + " && cd '" + quoted + "' && ";
 
     runQueue({
@@ -669,6 +752,8 @@ void CakeMeshPanel::onExportToStudio()
     if (!m_caseDir.isEmpty())
         emit exportRequested(m_caseDir);
 }
+
+// Async process queue
 
 void CakeMeshPanel::runQueue(QStringList cmds, std::function<void(bool)> onDone)
 {
@@ -707,6 +792,7 @@ void CakeMeshPanel::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 {
     onProcessOutput();
     if (status == QProcess::CrashExit) {
+        // exitCode is meaningless (often 0) after a crash or kill
         log("  [FAILED] process crashed or was killed");
         m_queueFailed = true;
         m_cmdQueue.clear();
@@ -719,6 +805,8 @@ void CakeMeshPanel::onProcessFinished(int exitCode, QProcess::ExitStatus status)
     }
     runNextInQueue();
 }
+
+// Helpers
 
 QString CakeMeshPanel::ofEnvPrefix() const
 {
@@ -734,4 +822,5 @@ void CakeMeshPanel::setRunning(bool on)
 {
     m_btnGenerate->setEnabled(!on);
     m_btnRunMesh->setEnabled(!on && !m_caseDir.isEmpty());
+    // Export stays as-is: only enabled after successful mesh
 }

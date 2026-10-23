@@ -1,3 +1,19 @@
+#!/usr/bin/env bash
+#
+# CakeCFD build script.
+#
+# Builds the desktop application and the TENO scheme library, checking the
+# environment first so failures are reported in terms of what is missing rather
+# than as a wall of compiler output.
+#
+#   ./build.sh                 build everything
+#   ./build.sh --clean         remove build artefacts first
+#   ./build.sh --debug         build with debug symbols
+#   ./build.sh --app-only      skip the TENO library
+#   ./build.sh --teno-only     skip the application
+#   ./build.sh --verbose       show full compiler output
+#   ./build.sh --jobs N        parallel jobs (default: all cores)
+#
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,6 +28,7 @@ DO_APP=1
 DO_TENO=1
 VERBOSE=0
 
+# Colour only when writing to a terminal and not suppressed.
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
     BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'
     GREEN=$'\033[32m'; YELLOW=$'\033[33m'; BLUE=$'\033[34m'; RESET=$'\033[0m'
@@ -31,6 +48,7 @@ die() {
     exit 1
 }
 
+# Run a command, streaming output when verbose and logging it otherwise.
 run() {
     if (( VERBOSE )); then
         "$@" 2>&1 | tee -a "$LOG"
@@ -39,20 +57,7 @@ run() {
     "$@" >>"$LOG" 2>&1
 }
 
-usage() {
-    cat <<'USAGE'
-Builds the desktop application and the TENO scheme library.
-
-  ./build.sh                 build everything
-  ./build.sh --clean         remove build artefacts first
-  ./build.sh --debug         build with debug symbols
-  ./build.sh --app-only      skip the TENO library
-  ./build.sh --teno-only     skip the application
-  ./build.sh --verbose       show full compiler output
-  ./build.sh --jobs N        parallel jobs (default all cores)
-USAGE
-    exit 0
-}
+usage() { sed -n '3,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
 
 while (( $# )); do
     case "$1" in
@@ -69,6 +74,9 @@ while (( $# )); do
 done
 
 banner() {
+    # Block letters only on a real terminal that is wide enough. Redirected
+    # output (CI logs, pipes) and narrow terminals get a plain line instead, so
+    # nothing wraps into unreadable fragments.
     local cols=0
     [[ -t 1 ]] && cols="$(tput cols 2>/dev/null || echo 0)"
 
@@ -88,6 +96,7 @@ ART
 
 banner
 
+# Environment
 step "Checking environment"
 
 MISSING=()
@@ -103,9 +112,12 @@ ok "build tools present"
 
 if (( DO_TENO )); then
     if [[ -z "${FOAM_USER_LIBBIN:-}" ]]; then
+        # Try the usual location before giving up, so the common case just works.
         FOAM_BASHRC="/usr/lib/openfoam/openfoam2412/etc/bashrc"
         if [[ -f "$FOAM_BASHRC" ]]; then
             warn "OpenFOAM environment not sourced; sourcing it for this build"
+            # OpenFOAM's bashrc reads many unset variables, so nounset has to be
+            # relaxed across the source or it aborts the script.
             set +u
             # shellcheck disable=SC1090
             source "$FOAM_BASHRC" >/dev/null 2>&1
@@ -134,10 +146,11 @@ if (( DO_CLEAN )); then
     ok "build artefacts removed"
 fi
 
+# Application
 if (( DO_APP )); then
     step "Configuring"
     run cmake -S "$ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-        || die "cmake configure failed (Qt5, VTK 9 or OpenCASCADE may be missing)"
+        || die "cmake configure failed (Qt6, VTK 9.5 or OpenCASCADE may be missing)"
     ok "configured"
 
     step "Building application"
@@ -146,6 +159,7 @@ if (( DO_APP )); then
     ok "CFDStudio built"
 fi
 
+# TENO scheme library
 if (( DO_TENO )); then
     step "Building TENO scheme library"
     if [[ ! -d "$TENO_DIR" ]]; then
@@ -157,6 +171,9 @@ if (( DO_TENO )); then
     LIB="$FOAM_USER_LIBBIN/libtenoScheme.so"
     [[ -f "$LIB" ]] || die "expected library not produced: $LIB"
 
+    # Confirm the schemes are actually registered, so a silent mismatch between
+    # the built library and the names used in fvSchemes is caught here rather
+    # than at solver runtime.
     REGISTERED="$(strings "$LIB" 2>/dev/null | grep -xE 'teno|teno6' | sort -u | tr '\n' ' ')"
     if [[ -n "$REGISTERED" ]]; then
         ok "libtenoScheme.so built, registers: ${REGISTERED% }"
@@ -165,6 +182,7 @@ if (( DO_TENO )); then
     fi
 fi
 
+# Summary
 printf '\n%sDone.%s\n' "$GREEN$BOLD" "$RESET"
 if (( DO_APP )); then
     printf '  run:  %s%s/run.sh%s\n' "$BOLD" "$ROOT" "$RESET"

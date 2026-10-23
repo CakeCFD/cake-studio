@@ -43,8 +43,8 @@ public:
 
 signals:
     void resultsReady(const QString& caseDir);
-    void aboutToRun();
-    void caseFilesChanged(const QString& caseDir);
+    void aboutToRun();   // emitted before solver starts: lets MainWindow flush PhysicsPanel
+    void caseFilesChanged(const QString& caseDir);  // controlDict patched - Properties panel needs refresh
 
 public slots:
     void appendLine(const QString& line);
@@ -78,6 +78,7 @@ private:
     QFrame*         m_solverBanner    = nullptr;
     QLabel*         m_bannerLabel     = nullptr;
 
+    // Terminal bar
     QLineEdit*          m_cmdEdit     = nullptr;
     QCompleter*         m_completer   = nullptr;
     QStringListModel*   m_suggModel   = nullptr;

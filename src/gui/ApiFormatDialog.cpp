@@ -65,6 +65,7 @@ ApiFormatDialog::ApiFormatDialog(QSettings& settings, QWidget* parent)
     auto* tabs = new QTabWidget;
     root->addWidget(tabs);
 
+    // Tab 1: Format & Test
     auto* fmtTab = new QWidget;
     auto* fmtTabL = new QVBoxLayout(fmtTab);
 
@@ -137,6 +138,7 @@ ApiFormatDialog::ApiFormatDialog(QSettings& settings, QWidget* parent)
 
     tabs->addTab(fmtTab, "Format & Test");
 
+    // Tab 2: Citation
     auto* citeTab  = new QWidget;
     auto* citeTabL = new QVBoxLayout(citeTab);
 
@@ -179,6 +181,7 @@ ApiFormatDialog::ApiFormatDialog(QSettings& settings, QWidget* parent)
 
     tabs->addTab(citeTab, "Citation");
 
+    // Buttons
     auto* bb = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
     root->addWidget(bb);
     connect(bb, &QDialogButtonBox::accepted, this, [this] {
@@ -254,6 +257,7 @@ QVector<double> ApiFormatDialog::parseResponse(const QByteArray& json,
                                                 const QString& path,
                                                 const QStringList& keys) const
 {
+    // Same parser the live query uses, so Test results match real runs
     QString err;
     QVector<double> result = CFD::DatasetClient::parseCustomJson(json, path, keys, &err);
     if (!err.isEmpty())

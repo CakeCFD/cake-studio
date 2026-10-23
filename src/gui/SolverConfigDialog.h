@@ -71,10 +71,12 @@ private:
     bool m_isBuoyant;
     bool m_isCentral;
     bool m_isTransient;
-    bool m_isLaminar;
+    bool m_isLaminar;  // icoFoam
 
+    // Incompressible
     QDoubleSpinBox* m_nu            = nullptr;
 
+    // Compressible fluid
     QComboBox*      m_preset        = nullptr;
     QComboBox*      m_thermoType    = nullptr;
     QComboBox*      m_eos           = nullptr;
@@ -91,14 +93,17 @@ private:
     QDoubleSpinBox* m_as            = nullptr;
     QDoubleSpinBox* m_ts            = nullptr;
 
+    // Buoyant
     QComboBox*      m_gravityDir    = nullptr;
 
+    // Flow conditions
     QDoubleSpinBox* m_inletVel      = nullptr;
     QComboBox*      m_divScheme     = nullptr;
-    QComboBox*      m_simType       = nullptr;
-    QComboBox*      m_sgsModel      = nullptr;
-    QComboBox*      m_rasModel      = nullptr;
+    QComboBox*      m_simType       = nullptr;  // RANS / LES
+    QComboBox*      m_sgsModel      = nullptr;  // SGS model (LES only)
+    QComboBox*      m_rasModel      = nullptr;  // RAS model (RANS only)
 
+    // Solver settings
     QSpinBox*       m_nCorrectors   = nullptr;
     QSpinBox*       m_nNonOrth      = nullptr;
     QDoubleSpinBox* m_relaxP        = nullptr;

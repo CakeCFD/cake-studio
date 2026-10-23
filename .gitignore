@@ -1,32 +1,51 @@
+# Build output
 build/
 *.o
 *.so
 *.a
 
+# Editor / tooling
 .vscode/
 .idea/
 *.user
 *.swp
 
+# Python
 __pycache__/
 *.pyc
 
+# Local run output (generated per-machine; not part of the source tree)
 runs/**/processor*/
 runs/**/postProcessing/
 
+# Generated OpenFOAM mesh + solver output (rebuilt by blockMesh/snappyHexMesh;
+# a single polyMesh is ~300k lines of text)
 **/constant/polyMesh/
 **/constant/extendedFeatureEdgeMesh/
 **/processor*/
 
+# Saved runs / project data - not part of the application source
 runs/
 
+# Cake Studio project files (user data)
 *.cake
 *.cake.bak
 
+# wmake-generated symlink dir
 lnInclude/
 
+# Test-case surface geometry (regenerated)
 **/constant/triSurface/
 
+# Validation run output
 validation/cases/**/work/
 
-packaging/windows/dist/
+# Local Qt6 migration build logs
+qt6-build*.log
+
+# OpenFOAM wmake-generated platform dependencies
+src/solver/schemes/TENO/Make/linux*/
+
+# Generated test executable and mesh-run logs
+tests/teno_test
+tests/mesh_pipeline_test/of_case/log.*

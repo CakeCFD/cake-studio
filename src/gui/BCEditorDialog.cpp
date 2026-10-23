@@ -93,6 +93,7 @@ void BCEditorDialog::discoverFields()
         "include", "initialConditions", "boundaryConditions"
     };
 
+    // Sort so the tab order is predictable
     QStringList entries;
     for (const QFileInfo& fi : dir.entryInfoList(QDir::Files | QDir::NoDotAndDotDot))
         if (!fi.fileName().startsWith('.') && !SKIP.contains(fi.fileName()))
@@ -103,6 +104,10 @@ void BCEditorDialog::discoverFields()
         loadField(name);
 }
 
+// Minimal OpenFOAM dictionary scanner (declared in BCEditorDialog.h, also
+// used by MRFDialog). Only tracks entry extents at one nesting level so edits
+// can be spliced into the original text; comments, quoted strings and nested
+// dicts/lists are skipped, never interpreted.
 namespace OFDict {
 
 int skipWsComments(const QString& t, int i, int end)
@@ -135,6 +140,7 @@ int skipString(const QString& t, int i, int end)
     return end;
 }
 
+// Index of the '}' matching the '{' at open, or -1
 int matchBrace(const QString& t, int open, int end)
 {
     int depth = 0, i = open;
@@ -152,6 +158,8 @@ int matchBrace(const QString& t, int open, int end)
     return -1;
 }
 
+// Entries directly inside [begin, end): keyword { ... } or keyword value;
+// Directives (#include "x", #codeStream {...}) are returned with their '#' key.
 QList<DictEntry> topLevelEntries(const QString& t, int begin, int end)
 {
     QList<DictEntry> out;
@@ -189,7 +197,7 @@ QList<DictEntry> topLevelEntries(const QString& t, int begin, int end)
                    && t[i] != ';' && t[i] != '"')
                 ++i;
             e.key = t.mid(e.start, i - e.start);
-            if (e.key.isEmpty()) { ++i; continue; }
+            if (e.key.isEmpty()) { ++i; continue; }   // stray ';' or '}'
         }
         e.keyEnd = i;
 
@@ -203,6 +211,7 @@ QList<DictEntry> topLevelEntries(const QString& t, int begin, int end)
             continue;
         }
 
+        // Plain entry: runs to the ';' outside any nested ( ) or { }
         int depth = 0;
         while (j < end) {
             const QChar c = t[j];
@@ -230,6 +239,7 @@ const DictEntry* findEntry(const QList<DictEntry>& entries, const QString& key)
     return nullptr;
 }
 
+// Text between the keyword and the terminating ';', trimmed
 QString entryValue(const QString& t, const DictEntry& e)
 {
     int stop = e.end;
@@ -237,6 +247,7 @@ QString entryValue(const QString& t, const DictEntry& e)
     return t.mid(e.keyEnd, stop - e.keyEnd).trimmed();
 }
 
+// Leading whitespace of the line containing pos
 QString lineIndent(const QString& t, int pos)
 {
     int ls = pos > 0 ? t.lastIndexOf('\n', pos - 1) + 1 : 0;
@@ -245,7 +256,7 @@ QString lineIndent(const QString& t, int pos)
     return t.mid(ls, k - ls);
 }
 
-}
+} // namespace OFDict
 
 using namespace OFDict;
 
@@ -255,6 +266,7 @@ static bool looksLikeVectorField(const QString& text)
     auto m = dimRe.match(text);
     if (!m.hasMatch()) return false;
     QStringList d = m.captured(1).trimmed().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    // velocity: [0 1 -1 0 0 0 0]
     return d.size() >= 3 && d[1] == "1" && d[2] == "-1";
 }
 
@@ -270,6 +282,7 @@ void BCEditorDialog::loadField(const QString& fieldName)
     fd.isVector     = looksLikeVectorField(fd.originalText);
     f.close();
 
+    // Must have a boundaryField section to be editable
     if (!fd.originalText.contains("boundaryField")) return;
 
     m_fields[fieldName] = fd;
@@ -284,6 +297,8 @@ QList<BCPatch> BCEditorDialog::parsePatches(const QString& text)
     const DictEntry* bf = findEntry(top, "boundaryField");
     if (!bf || bf->braceOpen < 0 || bf->braceClose < 0) return patches;
 
+    // Only depth-1 sub-dicts are patches (names may be quoted regexes such
+    // as ".*" or "(top|bottom)"); nested dicts inside a patch are skipped
     for (const DictEntry& e : topLevelEntries(text, bf->braceOpen + 1, bf->braceClose)) {
         if (e.braceOpen < 0 || e.braceClose < 0 || e.key.isEmpty()) continue;
 
@@ -304,7 +319,7 @@ QList<BCPatch> BCEditorDialog::parsePatches(const QString& text)
             if (vm.hasMatch())
                 patch.value = vm.captured(1).simplified();
             else
-                patch.nonUniform = true;
+                patch.nonUniform = true;   // nonuniform, List, #codeStream, $macro
         }
 
         patches.append(patch);
@@ -397,6 +412,9 @@ void BCEditorDialog::buildTab(const QString& fieldName, FieldData& fd)
 
 bool BCEditorDialog::writeField(FieldData& fd, const QList<BCPatch>& patches, QString& errOut)
 {
+    // Splice edits into the original text: untouched patches stay
+    // byte-identical, and in edited ones only the type / value entries
+    // change (inletValue, p0, gradient, Function1 dicts, #include survive).
     const QList<BCPatch> orig = parsePatches(fd.originalText);
     if (orig.size() != patches.size()) {
         errOut = QString("File changed since it was loaded: expected %1 patches, found %2")
@@ -406,6 +424,7 @@ bool BCEditorDialog::writeField(FieldData& fd, const QList<BCPatch>& patches, QS
 
     QString result = fd.originalText;
     int changed = 0;
+    // Back to front so earlier offsets stay valid
     for (int k = orig.size() - 1; k >= 0; --k) {
         const BCPatch& o = orig[k];
         const BCPatch& p = patches[k];
@@ -416,6 +435,8 @@ bool BCEditorDialog::writeField(FieldData& fd, const QList<BCPatch>& patches, QS
         if (!typeChanged && !valueChanged) continue;
         ++changed;
 
+        // The patch's '{' does not move while editing its own body, so the
+        // body is re-scanned after each splice
         auto bodyEntries = [&]() {
             int close = matchBrace(result, o.braceOpen, result.size());
             return topLevelEntries(result, o.braceOpen + 1,
@@ -450,8 +471,9 @@ bool BCEditorDialog::writeField(FieldData& fd, const QList<BCPatch>& patches, QS
         }
     }
 
-    if (changed == 0) return true;
+    if (changed == 0) return true;   // nothing edited: leave the file alone
 
+    // Validate: re-parse and confirm patch count matches
     QList<BCPatch> check = parsePatches(result);
     if (check.size() != orig.size()) {
         errOut = QString("Post-write validation failed: expected %1 patches, got %2")
@@ -459,10 +481,12 @@ bool BCEditorDialog::writeField(FieldData& fd, const QList<BCPatch>& patches, QS
         return false;
     }
 
+    // Backup original
     QString bakPath = fd.path + ".bak";
     QFile::remove(bakPath);
     QFile::copy(fd.path, bakPath);
 
+    // Atomic write
     QSaveFile sf(fd.path);
     if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
         errOut = "Cannot open file for writing: " + fd.path;

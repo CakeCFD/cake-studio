@@ -54,11 +54,13 @@ bool SnappyConfigWriter::write(const QString& caseDir, const SnappyParams& p)
       << " object snappyHexMeshDict; }\n\n"
       << "castellatedMesh true;\nsnap true;\naddLayers true;\n\n"
 
+      // Geometry
       << "geometry\n{\n"
       << "    " << p.surfaceName << "\n    {\n"
       << "        type triSurfaceMesh;\n"
       << "        file \"" << p.surfaceName << ".stl\";\n    }\n};\n\n"
 
+      // Castellated
       << "castellatedMeshControls\n{\n"
       << "    maxGlobalCells       " << p.maxGlobalCells << ";\n"
       << "    maxLocalCells        " << p.maxLocalCells  << ";\n"
@@ -80,6 +82,7 @@ bool SnappyConfigWriter::write(const QString& caseDir, const SnappyParams& p)
       <<      p.locationInMesh[2] << ");\n"
       << "    allowFreeStandingZoneFaces true;\n}\n\n"
 
+      // Snap
       << "snapControls\n{\n"
       << "    nSmoothPatch  " << p.nSmoothPatch << ";\n"
       << "    tolerance     " << p.snapTolerance << ";\n"
@@ -90,6 +93,7 @@ bool SnappyConfigWriter::write(const QString& caseDir, const SnappyParams& p)
       << "    explicitFeatureSnap true;\n"
       << "    multiRegionFeatureSnap false;\n}\n\n"
 
+      // Layers: OF 2412 compatible
       << "addLayersControls\n{\n"
       << "    relativeSizes true;\n"
       << "    layers\n    {\n"
@@ -114,6 +118,7 @@ bool SnappyConfigWriter::write(const QString& caseDir, const SnappyParams& p)
       << "    nBufferCellsNoExtrude   0;\n"
       << "    nLayerIter              50;\n}\n\n"
 
+      // Quality
       << "meshQualityControls\n{\n"
       << "    maxNonOrtho 65;\n"
       << "    maxBoundarySkewness 20;\n"
@@ -135,4 +140,4 @@ bool SnappyConfigWriter::write(const QString& caseDir, const SnappyParams& p)
     return true;
 }
 
-}
+} // namespace CFD

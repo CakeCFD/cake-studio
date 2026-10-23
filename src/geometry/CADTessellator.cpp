@@ -44,9 +44,11 @@
 
 namespace CFD {
 
+// Transform a point by a TopLoc_Location
 static gp_Pnt applyLoc(const gp_Pnt& p, const TopLoc_Location& loc)
 {
     if (loc.IsIdentity()) return p;
+    // TopLoc_Location implicitly converts to const gp_Trsf&
     gp_Pnt result = p;
     result.Transform(loc);
     return result;
@@ -68,13 +70,15 @@ vtkSmartPointer<vtkPolyData> CADTessellator::tessellate(
                 (xmax-xmin)*(xmax-xmin) +
                 (ymax-ymin)*(ymax-ymin) +
                 (zmax-zmin)*(zmax-zmin));
-            linDef = diag * params.linearDeflection;
+            linDef = diag * params.linearDeflection; // fraction of bbox diagonal: coarse enough for snappyHexMesh STL
         }
     }
 
     double angDef = params.angularDeflection * M_PI / 180.0;
 
     std::cerr << "[TESS] BRepMesh start linDef=" << linDef << "\n" << std::flush;
+    // The constructor already runs the mesher; calling Perform() again would
+    // mesh the shape a second time.
     BRepMesh_IncrementalMesh mesher(shape, linDef, false, angDef, false);
     std::cerr << "[TESS] BRepMesh done\n" << std::flush;
 
@@ -118,4 +122,4 @@ vtkSmartPointer<vtkPolyData> CADTessellator::tessellate(
     return poly;
 }
 
-}
+} // namespace CFD

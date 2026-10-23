@@ -93,4 +93,4 @@ RunConfig loadYAML(const std::string& path)
     return c;
 }
 
-}
+} // namespace CFD::CLI

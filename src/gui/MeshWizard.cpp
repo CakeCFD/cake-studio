@@ -32,6 +32,7 @@
 #include <QDir>
 #include <QFileInfo>
 
+// helpers
 static QDoubleSpinBox* dblSpin(double val, double lo, double hi, double step,
                                 int dec = 4) {
     auto* s = new QDoubleSpinBox;
@@ -62,6 +63,7 @@ MeshWizard::MeshWizard(QWidget* parent, const QString& projectDir) : QDialog(par
     buildBottomBar();
     root->addWidget(m_log);
 
+    // status + buttons row
     auto* bar = new QHBoxLayout;
     bar->addWidget(m_status, 1);
     bar->addWidget(m_btnGenerate);
@@ -69,20 +71,23 @@ MeshWizard::MeshWizard(QWidget* parent, const QString& projectDir) : QDialog(par
     bar->addWidget(m_btnRunSolver);
     root->addLayout(bar);
 
+    // Pre-fill output dir and case name from the active project directory
     if (!projectDir.isEmpty()) {
-        QString norm = QDir(projectDir).absolutePath();
+        QString norm = QDir(projectDir).absolutePath(); // strip trailing slash
         QFileInfo fi(norm);
-        m_outputDir->setText(fi.absolutePath());
-        m_caseName->setText(fi.fileName());
+        m_outputDir->setText(fi.absolutePath());   // parent dir
+        m_caseName->setText(fi.fileName());         // project folder name = case name
     }
 }
 
+// Geometry tab
 void MeshWizard::buildGeometryTab(QTabWidget* tabs)
 {
     auto* w   = new QWidget;
     auto* lay = new QVBoxLayout(w);
     lay->setSpacing(10);
 
+    // File picker row
     auto* row = new QHBoxLayout;
     m_geoPath = new QLineEdit;
     m_geoPath->setPlaceholderText("Path to STEP / IGES / BREP file…");
@@ -94,6 +99,7 @@ void MeshWizard::buildGeometryTab(QTabWidget* tabs)
     row->addWidget(loadBtn);
     lay->addLayout(row);
 
+    // Stats area
     auto* statsBox = new QGroupBox("Geometry Info");
     auto* statsLay = new QVBoxLayout(statsBox);
     m_geoStats = new QLabel("No geometry loaded.");
@@ -109,6 +115,7 @@ void MeshWizard::buildGeometryTab(QTabWidget* tabs)
     tabs->addTab(w, "① Geometry");
 }
 
+// Mesh tab
 void MeshWizard::buildMeshTab(QTabWidget* tabs)
 {
     auto* scroll = new QScrollArea;
@@ -116,6 +123,7 @@ void MeshWizard::buildMeshTab(QTabWidget* tabs)
     auto* w   = new QWidget;
     auto* lay = new QVBoxLayout(w);
 
+    // Background mesh
     auto* bgBox  = new QGroupBox("Background Mesh");
     auto* bgForm = new QFormLayout(bgBox);
     m_padding  = dblSpin(2.0, 0.1, 20.0, 0.5, 2);
@@ -123,6 +131,7 @@ void MeshWizard::buildMeshTab(QTabWidget* tabs)
     bgForm->addRow("Domain padding (×bbox):", m_padding);
     bgForm->addRow("Background cells / axis:", m_bgCells);
 
+    // Surface refinement
     auto* refBox  = new QGroupBox("Surface Refinement");
     auto* refForm = new QFormLayout(refBox);
     m_maxGlobal    = intSpin(2000000, 100000, 50000000);
@@ -136,6 +145,7 @@ void MeshWizard::buildMeshTab(QTabWidget* tabs)
     refForm->addRow("Refinement level max:",   m_refMax);
     refForm->addRow("Resolve feature angle °:",m_featureAngle);
 
+    // Boundary layers
     auto* layBox  = new QGroupBox("Boundary Layers");
     auto* layForm = new QFormLayout(layBox);
     m_nLayers         = intSpin(2, 0, 10);
@@ -155,11 +165,13 @@ void MeshWizard::buildMeshTab(QTabWidget* tabs)
     tabs->addTab(scroll, "② Mesh");
 }
 
+// Physics tab
 void MeshWizard::buildPhysicsTab(QTabWidget* tabs)
 {
     auto* w    = new QWidget;
     auto* lay  = new QVBoxLayout(w);
 
+    // Solver
     auto* solBox  = new QGroupBox("Solver");
     auto* solForm = new QFormLayout(solBox);
     m_solver = new QComboBox;
@@ -173,6 +185,7 @@ void MeshWizard::buildPhysicsTab(QTabWidget* tabs)
     solForm->addRow("Inflow velocity (m/s):", m_velocity);
     solForm->addRow("Kinematic viscosity ν:", m_nu);
 
+    // Output
     auto* outBox  = new QGroupBox("Output");
     auto* outForm = new QFormLayout(outBox);
     m_caseName  = new QLineEdit("cfdCase");
@@ -195,6 +208,7 @@ void MeshWizard::buildPhysicsTab(QTabWidget* tabs)
     tabs->addTab(w, "③ Physics");
 }
 
+// Bottom bar
 void MeshWizard::buildBottomBar()
 {
     m_log = new QTextEdit;
@@ -215,6 +229,7 @@ void MeshWizard::buildBottomBar()
     connect(m_btnRunSolver, &QPushButton::clicked, this, &MeshWizard::onRunSolver);
 }
 
+// Slots
 void MeshWizard::onBrowseGeometry()
 {
     QString path = FileBrowserDialog::getOpenFileName(
@@ -291,8 +306,10 @@ void MeshWizard::onGenerateCase()
     cp.nBoundaryLayers = m_nLayers->value();
     cp.inflowVelocity = m_velocity->value();
     cp.nu             = m_nu->value();
+    // BlockMeshWriter puts the inlet on the X-max face, so the flow runs in -X
     cp.flowAxis       = "-X";
 
+    // snappyHexMesh controls from the Mesh tab
     cp.maxGlobalCells       = m_maxGlobal->value();
     cp.maxLocalCells        = m_maxLocal->value();
     cp.surfaceRefinementMin = m_refMin->value();
@@ -374,6 +391,7 @@ void MeshWizard::onRunSolver()
     setRunning(false);
 }
 
+// helpers
 void MeshWizard::log(const QString& msg)
 {
     m_log->append("[" + QDateTime::currentDateTime().toString("hh:mm:ss") + "] " + msg);
@@ -384,12 +402,15 @@ bool MeshWizard::runCommand(const QString& cmd)
 {
     QProcess proc;
     proc.setProcessChannelMode(QProcess::MergedChannels);
+    // Pass the command as a single argv entry: QProcess::start(QString) splits
+    // on whitespace and only honours double quotes, which breaks bash -c '...'.
     proc.start("bash", { "-c", cmd });
     if (!proc.waitForStarted(5000)) {
         log("  [FAILED] could not start bash: " + proc.errorString());
         return false;
     }
 
+    // Keep partial lines between reads so output split across chunks is not mangled
     QString pending;
     auto drain = [&](bool flushAll) {
         pending += QString::fromLocal8Bit(proc.readAllStandardOutput());
@@ -405,6 +426,8 @@ bool MeshWizard::runCommand(const QString& cmd)
         }
     };
 
+    // Poll until the process exits; a quiet stretch (snappy, long solver
+    // iterations) must not end the loop, and the GUI stays responsive.
     while (proc.state() != QProcess::NotRunning) {
         proc.waitForReadyRead(100);
         drain(false);
@@ -420,6 +443,7 @@ bool MeshWizard::runCommand(const QString& cmd)
 
 QString MeshWizard::shellPrefix(const QString& caseDir)
 {
+    // Single-quote the case dir for bash; an embedded ' becomes '\''
     QString q = caseDir;
     q.replace("'", "'\\''");
     return "source /usr/lib/openfoam/openfoam2412/etc/bashrc 2>/dev/null && cd '"

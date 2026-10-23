@@ -27,7 +27,9 @@ namespace CFD { class CADGeometry; }
 namespace CFD {
 
 enum class TurbulenceModel {
+    // RANS
     Laminar, SpalartAllmaras, KOmegaSST, KEpsilon,
+    // LES / SGS
     Smagorinsky, DynamicKEqn, WALE, DynamicLagrangian
 };
 enum class SolverType { IcoFoam, SimpleFoam, PimpleFoam, RhoSimpleFoam };
@@ -47,19 +49,20 @@ inline bool isLES(TurbulenceModel m) {
         || m == TurbulenceModel::DynamicLagrangian;
 }
 
+// BC type for manual per-patch boundary condition assignment
 enum class BCType {
-    Wall,
-    VelocityInlet,
-    PressureOutlet,
-    Symmetry,
-    Slip,
-    ZeroGradient
+    Wall,           // noSlip for U, zeroGradient for p/scalars
+    VelocityInlet,  // fixedValue U, zeroGradient p
+    PressureOutlet, // zeroGradient U, fixedValue p=0
+    Symmetry,       // symmetry on all fields
+    Slip,           // slip for U, zeroGradient for p/scalars
+    ZeroGradient    // zeroGradient on all fields (freestream / far-field)
 };
 
 struct PatchBC {
     QString name;
     BCType  type     = BCType::Wall;
-    double  velocity = 0.0;
+    double  velocity = 0.0; // VelocityInlet: x-component (m/s)
 };
 
 struct CaseParams {
@@ -67,16 +70,19 @@ struct CaseParams {
     QString         caseDir;
     SolverType      solver           = SolverType::SimpleFoam;
     TurbulenceModel turbulence       = TurbulenceModel::KOmegaSST;
-    QString         divScheme        = "linearUpwind";
-    double          inflowVelocity   = 1.0;
-    double          aoaDeg           = 0.0;
-    QString         flowAxis         = "-X";
-    double          nu               = 1.5e-5;
-    double          meshPadding      = 0.5;
-    int             bgMeshCells      = 40;
+    QString         divScheme        = "linearUpwind"; // "linearUpwind" | "teno" | "teno6"
+    double          inflowVelocity   = 1.0;    // m/s along flow axis; used if patchBCs is empty
+    double          aoaDeg           = 0.0;    // angle of attack, degrees (pitch about Y, +ve = nose up)
+    // Flow direction. BlockMeshWriter puts the inlet on the X-max face, so the
+    // flow must run in -X or the inlet velocity points out of the domain.
+    QString         flowAxis         = "-X";   // flow direction: +X/-X/+Y/-Y/+Z/-Z
+    double          nu               = 1.5e-5; // kinematic viscosity m^2/s (air)
+    double          meshPadding      = 0.5;    // fraction of bbox on each side
+    int             bgMeshCells      = 40;     // background mesh cells per direction
     int             nBoundaryLayers  = 3;
-    double          surfaceRefinementLinear = 0.5;
+    double          surfaceRefinementLinear = 0.5; // % of bbox diagonal
 
+    // snappyHexMesh controls (defaults match SnappyParams)
     int             maxGlobalCells       = 2000000;
     int             maxLocalCells        = 100000;
     int             surfaceRefinementMin = 2;
@@ -86,20 +92,24 @@ struct CaseParams {
     double          firstLayerThickness  = 0.3;
     double          minLayerThickness    = 0.1;
 
+    // Per-patch BCs set from the GUI table.
+    // When empty, writeBoundaryConditions falls back to the auto mode using inflowVelocity.
     QVector<PatchBC> patchBCs;
 };
 
+// Generates a complete OpenFOAM case directory ready to run
 class CaseGenerator {
 public:
     struct Result {
         bool success = false;
         QString errorMsg;
         QString caseDir;
-        QString runScript;
+        QString runScript; // shell command to execute the full pipeline
     };
 
     static Result generate(const CADGeometry& geo, const CaseParams& params);
 
+    // Write all dict files only (caller handles STL + blockMeshDict externally)
     static bool generate_dicts_only(const CaseParams& params,
                                      const std::array<double,6>& geoBounds);
 
@@ -121,4 +131,4 @@ private:
     static QString turbModelName(TurbulenceModel t);
 };
 
-}
+} // namespace CFD

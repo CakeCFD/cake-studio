@@ -32,6 +32,9 @@ inline bool isWSL()
     return f.readAll().toLower().contains("microsoft");
 }
 
+// Open a directory in the native file manager.
+// On WSL: converts the Linux path to a Windows UNC path and launches Explorer.
+// On native Linux: uses xdg-open.
 inline void openDirectory(const QString& path)
 {
     if (isWSL()) {
@@ -46,4 +49,4 @@ inline void openDirectory(const QString& path)
     }
 }
 
-}
+} // namespace PlatformUtils

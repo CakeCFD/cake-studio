@@ -31,9 +31,11 @@ class PhysicsPanel : public QDialog {
 public:
     explicit PhysicsPanel(const QString& caseDir, QWidget* parent = nullptr);
 
+    // Serialize / restore physics settings to/from a JSON object (for .cake project files)
     static QJsonObject snapshotFromCase(const QString& caseDir);
     static void        restoreToCase   (const QString& caseDir, const QJsonObject& obj);
 
+    // Move libtenoScheme.so from fvSchemes → controlDict if misplaced (silent migration)
     static void migrateTenolibsToControlDict(const QString& caseDir);
 
 signals:
@@ -59,11 +61,12 @@ private:
 
     QString m_caseDir;
 
-    QComboBox*      m_solverCombo;
-    QLabel*         m_thermalNote;
-    QComboBox*      m_simTypeCombo;
+    // Solver / sim type
+    QComboBox*      m_solverCombo;    // simpleFoam | buoyantSimpleFoam | rhoSimpleFoam | pimpleFoam | buoyantPimpleFoam
+    QLabel*         m_thermalNote;    // hint shown when thermal solver selected
+    QComboBox*      m_simTypeCombo;   // RANS | LES
     QComboBox*      m_modelCombo;
-    QComboBox*      m_divSchemeCombo;
+    QComboBox*      m_divSchemeCombo; // linearUpwind | teno | teno6
 
     QGroupBox*      m_turbBox;
     QDoubleSpinBox* m_kSpin;

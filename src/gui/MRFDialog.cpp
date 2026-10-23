@@ -18,8 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "MRFDialog.h"
-#include "themes/ThemeEngine.h"
-#include "BCEditorDialog.h"
+#include "BCEditorDialog.h"   // OFDict scanner
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -34,6 +33,8 @@
 
 static constexpr double RPM_TO_RADS = M_PI / 30.0;
 
+// helpers
+
 static QDoubleSpinBox* makeSpin(double lo, double hi, double val, int dec = 4)
 {
     auto* s = new QDoubleSpinBox;
@@ -44,14 +45,17 @@ static QDoubleSpinBox* makeSpin(double lo, double hi, double val, int dec = 4)
     return s;
 }
 
+// constructor
+
 MRFDialog::MRFDialog(const QString& caseDir, QWidget* parent)
     : QDialog(parent), m_caseDir(caseDir)
 {
     setWindowTitle("MRF: Rotating Reference Frames");
     setMinimumSize(680, 520);
 
-    auto* root = new QHBoxLayout;
+    auto* root = new QHBoxLayout;   // no parent: added to outer below
 
+    // Left: zone list
     auto* leftCol = new QVBoxLayout;
     leftCol->addWidget(new QLabel("Rotating zones:"));
 
@@ -67,6 +71,7 @@ MRFDialog::MRFDialog(const QString& caseDir, QWidget* parent)
     leftCol->addLayout(btnRow);
     root->addLayout(leftCol);
 
+    // Right: detail form
     auto* rightCol = new QVBoxLayout;
 
     m_detailBox = new QGroupBox("Zone settings");
@@ -81,6 +86,7 @@ MRFDialog::MRFDialog(const QString& caseDir, QWidget* parent)
     m_zoneEdit->setPlaceholderText("rotorZone  (must exist as a cellZone in the mesh)");
     form->addRow("Cell zone:", m_zoneEdit);
 
+    // Origin
     auto* origRow = new QHBoxLayout;
     m_ox = makeSpin(-1e4, 1e4, 0.0); m_oy = makeSpin(-1e4, 1e4, 0.0); m_oz = makeSpin(-1e4, 1e4, 0.0);
     origRow->addWidget(new QLabel("x")); origRow->addWidget(m_ox);
@@ -88,6 +94,7 @@ MRFDialog::MRFDialog(const QString& caseDir, QWidget* parent)
     origRow->addWidget(new QLabel("z")); origRow->addWidget(m_oz);
     form->addRow("Origin (m):", origRow);
 
+    // Axis
     auto* axRow = new QHBoxLayout;
     m_ax = makeSpin(-1, 1, 0.0); m_ay = makeSpin(-1, 1, 0.0); m_az = makeSpin(-1, 1, 1.0);
     axRow->addWidget(new QLabel("x")); axRow->addWidget(m_ax);
@@ -103,12 +110,12 @@ MRFDialog::MRFDialog(const QString& caseDir, QWidget* parent)
     m_noRotEdit->setPlaceholderText("eg. inlet outlet  (leave blank if none)");
     form->addRow("Non-rotating patches:", m_noRotEdit);
 
+    // Info label
     auto* hint = new QLabel(
         "ℹ  The cell zone must be created during meshing\n"
         "   (snappyHexMesh refinementRegions to cellZone).\n"
         "   Positive RPM = right-hand rule about axis.");
-    hint->setStyleSheet("font-size: 11px;");
-    ThemeEngine::setRole(hint, "muted");
+    hint->setStyleSheet("color: #6c7086; font-size: 11px;");
     hint->setWordWrap(true);
 
     rightCol->addWidget(m_detailBox);
@@ -116,12 +123,12 @@ MRFDialog::MRFDialog(const QString& caseDir, QWidget* parent)
     rightCol->addStretch();
     root->addLayout(rightCol, 1);
 
+    // Bottom bar
     auto* outer = new QVBoxLayout;
     outer->addLayout(root);
 
     m_status = new QLabel;
-    m_status->setStyleSheet("font-size: 11px; padding: 2px;");
-    ThemeEngine::setRole(m_status, "muted");
+    m_status->setStyleSheet("color: #6c7086; font-size: 11px; padding: 2px;");
     outer->addWidget(m_status);
 
     auto* btns = new QHBoxLayout;
@@ -143,6 +150,8 @@ MRFDialog::MRFDialog(const QString& caseDir, QWidget* parent)
     loadFromFile();
 }
 
+// file I/O
+
 void MRFDialog::loadFromFile()
 {
     QString path = m_caseDir + "/constant/MRFProperties";
@@ -159,6 +168,8 @@ QList<MRFZone> MRFDialog::parseFile(const QString& text)
 {
     QList<MRFZone> zones;
 
+    // Each depth-0 dict is a zone; nested dicts (eg. omega { type ...; })
+    // belong to their zone and are not zones themselves
     for (const OFDict::DictEntry& e : OFDict::topLevelEntries(text, 0, text.size())) {
         if (e.braceOpen < 0 || e.braceClose < 0 || e.key == "FoamFile") continue;
 
@@ -172,7 +183,7 @@ QList<MRFZone> MRFDialog::parseFile(const QString& text)
         auto val = [&](const QString& key) -> QString {
             const OFDict::DictEntry* ke = OFDict::findEntry(entries, key);
             if (!ke) return QString();
-            if (ke->braceOpen >= 0)
+            if (ke->braceOpen >= 0)   // dict form: hand back its contents
                 return body.mid(ke->braceOpen + 1, ke->braceClose - ke->braceOpen - 1);
             return OFDict::entryValue(body, *ke);
         };
@@ -181,6 +192,7 @@ QList<MRFZone> MRFDialog::parseFile(const QString& text)
         const QString act = val("active");
         if (!act.isEmpty()) z.active = act;
 
+        // origin ( x y z )
         QRegularExpression vecRe(R"(origin\s+\(\s*([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s*\))");
         auto vm = vecRe.match(body);
         if (vm.hasMatch()) {
@@ -189,6 +201,7 @@ QList<MRFZone> MRFDialog::parseFile(const QString& text)
             z.originZ = vm.captured(3).toDouble();
         }
 
+        // axis ( x y z )
         QRegularExpression axRe(R"(axis\s+\(\s*([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s*\))");
         auto am = axRe.match(body);
         if (am.hasMatch()) {
@@ -197,13 +210,16 @@ QList<MRFZone> MRFDialog::parseFile(const QString& text)
             z.axisZ = am.captured(3).toDouble();
         }
 
+        // omega: stored as rad/s, convert to RPM for display
         QString omStr = val("omega");
+        // "omega constant 104.72", "omega 104.72" or "omega { type constant; value 104.72; }"
         static const QRegularExpression omRe(
             R"((?<![\w.])[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)");
         auto om = omRe.match(omStr);
         if (om.hasMatch())
             z.rpm = om.captured(0).toDouble() / RPM_TO_RADS;
 
+        // nonRotatingPatches ( a b c )
         QRegularExpression nrRe(R"(nonRotatingPatches\s+\(([^)]*)\))");
         auto nr = nrRe.match(body);
         if (nr.hasMatch()) z.nonRotPatches = nr.captured(1).simplified();
@@ -245,6 +261,9 @@ void MRFDialog::writeZones()
     QString path = m_caseDir + "/constant/MRFProperties";
 
     if (m_zones.isEmpty()) {
+        // No zones: remove the file so OpenFOAM runs without MRF.
+        // Leaving an empty file causes OF to initialise MRFZoneList and
+        // throw spurious "cannot find cellZone" errors on non-rotating cases.
         QFile::remove(path);
         m_status->setText("MRFProperties removed: no rotating zones.");
         return;
@@ -261,6 +280,8 @@ void MRFDialog::writeZones()
     m_status->setText("Written: constant/MRFProperties  (" +
                       QString::number(m_zones.size()) + " zone(s))");
 }
+
+// UI helpers
 
 void MRFDialog::saveToDetail(int idx)
 {
@@ -288,6 +309,8 @@ void MRFDialog::loadToDetail(int idx)
     m_noRotEdit->setText(z.nonRotPatches);
     m_detailBox->setEnabled(true);
 }
+
+// slots
 
 void MRFDialog::onAdd()
 {

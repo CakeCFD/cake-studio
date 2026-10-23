@@ -1,6 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.20)
 
-find_package(Qt5 REQUIRED COMPONENTS Core)
+find_package(Qt6 REQUIRED COMPONENTS Core)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(YAMLCPP REQUIRED yaml-cpp)
 
@@ -18,7 +18,7 @@ target_include_directories(cfdstudio PRIVATE
 target_link_libraries(cfdstudio PRIVATE
     geometry
     meshing
-    Qt5::Core
+    Qt6::Core
     ${YAMLCPP_LIBRARIES}
 )
 

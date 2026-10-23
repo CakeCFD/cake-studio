@@ -95,8 +95,10 @@ private:
 
     QStringList m_filterSections;
 
+    // {originalPath, trashPath}: Ctrl+Z restores in reverse order
     QVector<QPair<QString,QString>> m_trashStack;
 
+    // Theme-resolved colors set in constructor
     QString m_subTextColor;
     QString m_accentColor;
     QString m_textColor;

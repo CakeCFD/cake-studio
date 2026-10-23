@@ -54,6 +54,7 @@ void ConsolePanel::setupUI() {
     root->setContentsMargins(4, 4, 4, 4);
     root->setSpacing(4);
 
+    // Controls row
     auto* controls = new QHBoxLayout();
 
     m_solverCombo = new QComboBox;
@@ -82,6 +83,7 @@ void ConsolePanel::setupUI() {
     connect(resetRunBtn, &QPushButton::clicked, this, [this](){
         QString caseDir = m_casePathEdit->text().trimmed();
         if (caseDir.isEmpty()) { appendLine("[ERROR] Set case directory first."); return; }
+        // Remove all numeric time directories (old solution data)
         QDir d(caseDir);
         for (const QString& entry : d.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
             bool ok; int n = entry.toInt(&ok);
@@ -125,30 +127,44 @@ void ConsolePanel::setupUI() {
     connect(m_solverCombo, &QComboBox::currentTextChanged,
             this, &ConsolePanel::showSolverBanner);
 
+    // Solver-change warning banner (hidden until solver is switched)
     m_solverBanner = new QFrame;
     m_solverBanner->setFrameShape(QFrame::StyledPanel);
     m_solverBanner->setObjectName("solverBanner");
-    ThemeEngine::setRole(m_solverBanner, "warnBanner");
+    m_solverBanner->setStyleSheet(
+        "QFrame#solverBanner {"
+        "  background: #3d3000;"
+        "  border: 1px solid #a87d00;"
+        "  border-radius: 4px;"
+        "  padding: 0px;"
+        "}");
     {
         auto* bl = new QHBoxLayout(m_solverBanner);
         bl->setContentsMargins(8, 5, 8, 5);
         bl->setSpacing(8);
 
         auto* icon = new QLabel("⚠");
-        icon->setStyleSheet("font-size:14px;");
+        icon->setStyleSheet("color:#f9e2af; font-size:14px;");
         icon->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
         m_bannerLabel = new QLabel;
-        m_bannerLabel->setStyleSheet("font-size:11px;");
+        m_bannerLabel->setStyleSheet("color:#f9e2af; font-size:11px;");
         m_bannerLabel->setWordWrap(false);
 
         auto* openBtn = new QPushButton("Open Solver Config");
+        openBtn->setStyleSheet(
+            "QPushButton { font-size:10px; padding:2px 10px;"
+            "  color:#f9e2af; border:1px solid #a87d00;"
+            "  border-radius:3px; background:transparent; }"
+            "QPushButton:hover { background:#a87d00; color:#1e1e2e; }");
         openBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         connect(openBtn, &QPushButton::clicked, m_solverConfigBtn, &QPushButton::click);
 
         auto* dismissBtn = new QPushButton("✕");
         dismissBtn->setFixedSize(20, 20);
-        dismissBtn->setStyleSheet("QPushButton { border:none; padding:0; }");
+        dismissBtn->setStyleSheet(
+            "QPushButton { font-size:10px; color:#a87d00; border:none; background:transparent; }"
+            "QPushButton:hover { color:#f9e2af; }");
         connect(dismissBtn, &QPushButton::clicked, this, &ConsolePanel::hideSolverBanner);
 
         bl->addWidget(icon);
@@ -158,6 +174,7 @@ void ConsolePanel::setupUI() {
     }
     m_solverBanner->setVisible(false);
 
+    // Splitter: plot on top, text output below
     auto* splitter = new QSplitter(Qt::Vertical);
 
     m_plot = new ResidualPlot();
@@ -172,12 +189,13 @@ void ConsolePanel::setupUI() {
     m_output->setFont(mono);
     splitter->addWidget(m_output);
 
-    splitter->setStretchFactor(0, 2);
-    splitter->setStretchFactor(1, 3);
+    splitter->setStretchFactor(0, 2);   // plot gets 2/5
+    splitter->setStretchFactor(1, 3);   // log text gets 3/5
 
     root->addLayout(controls);
     root->addWidget(m_solverBanner);
     root->addWidget(splitter);
+    // Terminal input bar
     auto* termRow = new QHBoxLayout;
     termRow->setSpacing(4);
 
@@ -192,12 +210,17 @@ void ConsolePanel::setupUI() {
     auto* runCmdBtn = new QPushButton("Run");
     runCmdBtn->setFixedWidth(48);
 
-    auto makeCopyBtn = [this](const QString& label, const QString& role,
+    auto makeCopyBtn = [this](const QString& label, const QString& color,
                                const QStringList& keywords) {
         auto* btn = new QPushButton(label);
         btn->setFixedWidth(110);
-        ThemeEngine::setRole(btn, role);
+        btn->setStyleSheet(QString(
+            "QPushButton { font-size:10px; padding:2px 6px; color:%1; border:1px solid %1; "
+            "border-radius:3px; background:transparent; }"
+            "QPushButton:hover { background:%1; color:#1e1e2e; }").arg(color));
         connect(btn, &QPushButton::clicked, this, [this, keywords, btn]() {
+            // Capture full blocks: from the matching line until the next blank line,
+            // so multi-line FOAM errors are copied in their entirety.
             QStringList lines = m_output->toPlainText().split('\n');
             QStringList blocks;
             bool inBlock = false;
@@ -235,22 +258,28 @@ void ConsolePanel::setupUI() {
         return btn;
     };
 
-    auto* copyWarnBtn = makeCopyBtn("⚠ Copy Warnings", "copyWarn",
+    auto* copyWarnBtn = makeCopyBtn("⚠ Copy Warnings", "#f9e2af",
                                     {"Warning", "WARNING", "WARN", "warning"});
-    auto* copyErrBtn  = makeCopyBtn("✕ Copy Errors",   "copyErr",
+    auto* copyErrBtn  = makeCopyBtn("✕ Copy Errors",   "#f38ba8",
                                     {"Error", "ERROR", "FATAL", "FAILED", "error:", "fatal"});
 
+    // Completer with OF commands
     QStringList ofCmds = {
+        // Solvers
         "simpleFoam","icoFoam","pimpleFoam","pisoFoam",
         "rhoSimpleFoam","rhoCentralFoam","buoyantSimpleFoam","buoyantPimpleFoam",
         "sonicFoam","laplacianFoam","potentialFoam","SRFSimpleFoam",
+        // Mesh
         "blockMesh","snappyHexMesh","surfaceFeatureExtract","checkMesh",
         "extrudeMesh","refineMesh","renumberMesh","decomposePar","reconstructPar",
         "foamCleanPolyMesh","transformPoints","mirrorMesh","createPatch",
+        // Post
         "foamToVTK","paraFoam","foamListTimes","postProcess",
         "sample","probeLocations","streamlines",
+        // Utilities
         "foamInfo","foamDictionary","setFields","mapFields",
         "changeDictionary","topoSet","createBaffles",
+        // Surface
         "surfaceCheck","surfaceConvert","surfaceFeatureConvert",
         "surfaceSplitByTopology","surfaceOrient",
     };
@@ -298,6 +327,7 @@ void ConsolePanel::detectAndCiteSchemes() {
 
     auto& cit = CitationManager::instance();
 
+    // Detect TENO5 from system/fvSchemes
     QFile fvSchemes(caseDir + "/system/fvSchemes");
     if (fvSchemes.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QString txt = fvSchemes.readAll();
@@ -306,8 +336,9 @@ void ConsolePanel::detectAndCiteSchemes() {
         fvSchemes.close();
     }
 
-    for (const QString& fname : {caseDir + "/constant/turbulenceProperties",
-                                  caseDir + "/constant/momentumTransport"}) {
+    // Detect turbulence model from constant/momentumTransport or turbulenceProperties
+    for (const QString& fname : {caseDir + "/constant/momentumTransport",
+                                  caseDir + "/constant/turbulenceProperties"}) {
         QFile tf(fname);
         if (!tf.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
         QString txt = tf.readAll();
@@ -319,6 +350,7 @@ void ConsolePanel::detectAndCiteSchemes() {
         break;
     }
 
+    // Print any newly cited references
     QStringList msgs = cit.consumePending();
     if (!msgs.isEmpty()) {
         appendLine("\n  [Cake] Active numerical methods; please cite:");
@@ -340,6 +372,7 @@ void ConsolePanel::onSolverFinished(int exitCode) {
     QString caseDir = m_casePathEdit->text().trimmed();
 
     if (!m_currentRunDir.isEmpty()) {
+        // Did the solver get far enough to write anything worth keeping?
         bool producedOutput = false;
         for (const QString& e : QDir(caseDir).entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
             bool ok; double v = e.toDouble(&ok);
@@ -349,19 +382,23 @@ void ConsolePanel::onSolverFinished(int exitCode) {
             RunLogger::finishRun(m_currentRunDir, caseDir, true);
             appendLine(QString("[Run] Saved: %1").arg(QFileInfo(m_currentRunDir).fileName()));
         } else if (stopped) {
+            // User interrupted: keep the run, flagged as stopped
             RunLogger::finishRun(m_currentRunDir, caseDir, false, true);
             appendLine(QString("[Run] Saved (stopped): %1").arg(QFileInfo(m_currentRunDir).fileName()));
         } else if (producedOutput) {
+            // Diverged/crashed mid-run: keep it so the failure can be inspected
             RunLogger::finishRun(m_currentRunDir, caseDir, false);
             appendLine(QString("[Run] Solver exited with errors: saved as %1 (not converged).")
                            .arg(QFileInfo(m_currentRunDir).fileName()));
         } else {
+            // Nothing written: discard the run log, don't pollute run history
             QDir(m_currentRunDir).removeRecursively();
             appendLine("[Run] Solver exited with errors: run not saved.");
         }
         m_currentRunDir.clear();
     }
 
+    // Always try to show whatever time steps exist: useful for failed/diverged runs too.
     if (!caseDir.isEmpty()) {
         QDir d(caseDir);
         static QRegularExpression numRe("^\\d+(\\.\\d+)?$");
@@ -396,6 +433,7 @@ void ConsolePanel::setCaseDir(const QString& dir)
     m_casePathEdit->setText(dir);
     appendLine("[Case] " + dir);
 
+    // Auto-detect solver from controlDict so the combo stays in sync with the case
     QFile ctlFile(dir + "/system/controlDict");
     if (ctlFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QString txt = ctlFile.readAll();
@@ -419,6 +457,7 @@ void ConsolePanel::onRunClicked() {
     QString caseDir = m_casePathEdit->text().trimmed();
     QString solver  = m_solverCombo->currentText();
     if (m_runner->isRunning()) {
+        // startRun() would wipe the live run's time dirs and lose m_currentRunDir
         appendLine("[Run] A solver is already running: stop it first.");
         return;
     }
@@ -426,8 +465,11 @@ void ConsolePanel::onRunClicked() {
         appendLine("[ERROR] Set solver and case directory first.");
         return;
     }
-    emit aboutToRun();
+    emit aboutToRun();  // flush PhysicsPanel + SystemConfig settings to disk before starting
 
+    // Detect if the selected solver doesn't match the case's controlDict application field.
+    // When they differ, files written by a previous Solver Config are wrong - require the
+    // user to re-run it so the case is properly configured for the new solver.
     {
         QString currentApp;
         QFile ctl(caseDir + "/system/controlDict");
@@ -446,6 +488,7 @@ void ConsolePanel::onRunClicked() {
             SolverConfigDialog dlg(solver, caseDir, this);
             dlg.exec();
             emit caseFilesChanged(caseDir);
+            // Re-verify: if Write was done, application is now updated to solver
             QString newApp;
             QFile ctl2(caseDir + "/system/controlDict");
             if (ctl2.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -460,6 +503,7 @@ void ConsolePanel::onRunClicked() {
         }
     }
 
+    // Compressible solvers: if SolverConfigDialog hasn't been run yet, prompt the user
     const bool isCompressible = (solver == "rhoSimpleFoam"     || solver == "rhoPimpleFoam"
                                   || solver == "rhoCentralFoam"
                                   || solver == "buoyantSimpleFoam" || solver == "buoyantPimpleFoam");
@@ -474,6 +518,7 @@ void ConsolePanel::onRunClicked() {
         emit caseFilesChanged(caseDir);
     }
 
+    // Incompressible solvers: restore kinematic p and incompressible fvSchemes if case was compressible
     const bool isIncompressible = (solver == "simpleFoam" || solver == "icoFoam"
                                     || solver == "pimpleFoam" || solver == "pisoFoam");
     if (isIncompressible) {
@@ -483,6 +528,7 @@ void ConsolePanel::onRunClicked() {
             QString txt = pf.readAll();
             pf.close();
             if (txt.contains("[1 -1 -2") || txt.contains("uniform 101325")) {
+                // Detect div scheme to preserve TENO
                 QString divUScheme = "Gauss linearUpwind grad(U)";
                 {
                     QFile sf(caseDir + "/system/fvSchemes");
@@ -493,6 +539,7 @@ void ConsolePanel::onRunClicked() {
                     }
                 }
 
+                // Restore 0/p to kinematic pressure
                 struct PI { QString name, type; };
                 QList<PI> patches;
                 {
@@ -532,6 +579,7 @@ void ConsolePanel::onRunClicked() {
                     appendLine("[Run] Restored 0/p to kinematic pressure for " + solver + ".");
                 }
 
+                // Restore fvSchemes to incompressible if they contain compressible stress term
                 QString schPath = caseDir + "/system/fvSchemes";
                 {
                     QFile sf(schPath);
@@ -572,6 +620,7 @@ void ConsolePanel::onRunClicked() {
         }
     }
 
+    // Read GPU flags that onApply() wrote to decomposeParDict
     bool useGpu = false;
     double vramFraction = 0.80;
     QFile dpd(caseDir + "/system/decomposeParDict");
@@ -590,6 +639,7 @@ void ConsolePanel::onRunClicked() {
     if (useGpu) appendLine(QString("[Run] GPU solver enabled (VRAM limit: %1%).").arg(qRound(vramFraction * 100)));
     m_runner->run(solver, caseDir, {}, useGpu, vramFraction);
     if (!m_runner->isRunning() && !m_currentRunDir.isEmpty()) {
+        // Failed to start: no solverFinished will follow, and there is nothing to keep
         QDir(m_currentRunDir).removeRecursively();
         m_currentRunDir.clear();
     }
@@ -609,7 +659,7 @@ void ConsolePanel::execCommand(const QString& cmd)
     m_cmdEdit->clear();
 
     QString caseDir = m_casePathEdit->text().trimmed();
-    appendLine("$ " + cmd);
+    appendLine("$ " + cmd);  // plain text: the output pane is a QPlainTextEdit
 
     if (m_cmdProcess && m_cmdProcess->state() != QProcess::NotRunning) {
         appendLine(QString("[busy: previous command still running]"));

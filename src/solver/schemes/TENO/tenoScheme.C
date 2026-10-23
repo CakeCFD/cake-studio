@@ -27,6 +27,9 @@
 namespace Foam
 {
 
+// Per-component smoothness indicator
+// Fixes the original magSqr() bug: for vector/tensor fields this now correctly
+// operates on each scalar component independently.
 template<class Type>
 scalar tenoScheme<Type>::betaIndicatorCmpt(
     const GeometricField<Type, fvPatchField, volMesh>& vf,
@@ -41,15 +44,17 @@ scalar tenoScheme<Type>::betaIndicatorCmpt(
     scalar gx = 0, gy = 0, gz = 0, bias = 0;
     for (label j = 0; j < n; ++j)
     {
-        scalar uj = component(vf[stencil[j]], cmpt);
+        scalar uj = component(vf[stencil[j]], cmpt);   // per-component extraction
         bias += lsq[0*n + j] * uj;
         gx   += lsq[1*n + j] * uj;
         gy   += lsq[2*n + j] * uj;
         gz   += lsq[3*n + j] * uj;
     }
 
+    // First-order smoothness: |∇u|²
     scalar beta1 = gx*gx + gy*gy + gz*gz;
 
+    // Second-order smoothness: residual variance of the linear fit
     const vectorField& cc = this->mesh().cellCentres();
     scalar beta2 = 0.0;
     for (label j = 0; j < n; ++j)
@@ -64,13 +69,14 @@ scalar tenoScheme<Type>::betaIndicatorCmpt(
     return beta1 + beta2 / max(n - 1, 1);
 }
 
+// Per-component face reconstruction
 template<class Type>
 scalar tenoScheme<Type>::reconstructFaceCmpt(
     const GeometricField<Type, fvPatchField, volMesh>& vf,
     direction cmpt,
     const labelList& stencil,
     const scalarField& lsq,
-    const vector& ) const
+    const vector& /*faceC*/) const
 {
     label n = stencil.size();
     if (n == 0) return 0.0;
@@ -82,6 +88,7 @@ scalar tenoScheme<Type>::reconstructFaceCmpt(
     return result;
 }
 
+// TENO correction (per-component, adaptive C_T)
 template<class Type>
 tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 tenoScheme<Type>::correction(
@@ -106,53 +113,47 @@ tenoScheme<Type>::correction(
 
         Type tv = pTraits<Type>::zero;
 
+        // Per-component TENO
         for (direction cmpt = 0; cmpt < pTraits<Type>::nComponents; ++cmpt)
         {
             const scalar bK = betaIndicatorCmpt(vf, cmpt, fd.stencilK, fd.lsqK, fC);
             const scalar b0 = betaIndicatorCmpt(vf, cmpt, fd.stencil0, fd.lsq0, fC);
             const scalar b1 = betaIndicatorCmpt(vf, cmpt, fd.stencil1, fd.lsq1, fC);
 
+            // Global smoothness discriminator τ = max pairwise beta spread (proxy for Fu τ5)
+            // Using max spread rather than |β0-β2| since stencil ordering isn't fixed in 3D.
             const scalar tau = max(mag(bK - b0), max(mag(b0 - b1), mag(bK - b1))) + eps_;
 
+            // Scale separation (Fu 2016 Eq.23): χ_k = (1 + τ/(β_k+ε))^q
+            // Using 1+τ/β (not 1/β^q) guarantees χ_k ≥ 1 - prevents all-zero collapse
+            // that would set face values to 0 and blow up pressure-velocity coupling.
             const scalar gK = Foam::pow(1.0 + tau/(eps_ + bK), scalar(q_));
             const scalar g0 = Foam::pow(1.0 + tau/(eps_ + b0), scalar(q_));
             const scalar g1 = Foam::pow(1.0 + tau/(eps_ + b1), scalar(q_));
             const scalar gS = gK + g0 + g1 + SMALL;
 
+            // Adaptive C_T (Fu 2018 TENO-A)
             const scalar betaMin  = min(bK, min(b0, b1));
             const scalar sigma    = tau / (eps_ + betaMin);
             const scalar C_T_loc  = C_T_ * (1.0 + 10.0 * sigma / (1.0 + sigma));
 
+            // Hard cutoff δ_k (Fu 2016 Eq.24-25)
             const scalar deltaK = (gK/gS > C_T_loc) ? 1.0 : 0.0;
             const scalar delta0 = (g0/gS > C_T_loc) ? 1.0 : 0.0;
             const scalar delta1 = (g1/gS > C_T_loc) ? 1.0 : 0.0;
 
+            // Two-level reconstruction (Fu 2016 Eq.26-28):
+            //   Wide stencil K smooth → fall back to conservative linear (zero correction)
+            //     so the SIMPLE pressure-velocity coupling stays stable over many iterations.
+            //     LSQ(K) ≠ mesh-weighted-linear even in smooth regions, and the accumulated
+            //     non-conservative correction diverges in steady-state SIMPLE.
+            //   K non-smooth → TENO blend of sub-stencils, clamped to owner-neighbour range.
+            //   All sub-stencils excluded → owner-side reconstruction, clamped.
             scalar tvCmpt;
-            if (faceFluxPtr_)
+            if (deltaK > 0.5)
             {
-                const bool fromOwner = (*faceFluxPtr_)[facei] >= 0;
-                const label up = fromOwner ? mesh.owner()[facei] : mesh.neighbour()[facei];
-                {
-                    const labelList& st = fromOwner ? fd.stencil0 : fd.stencil1;
-                    const scalarField& ls = fromOwner ? fd.lsq0 : fd.lsq1;
-                    const label n = st.size();
-                    vector g = Zero;
-                    for (label j = 0; j < n; ++j)
-                    {
-                        const scalar uj = component(vf[st[j]], cmpt);
-                        g += vector(ls[1*n + j], ls[2*n + j], ls[3*n + j])*uj;
-                    }
-                    tvCmpt = component(vf[up], cmpt) + (g & (fC - mesh.cellCentres()[up]));
-                }
-                if (deltaK < 0.5)
-                {
-                    const scalar vO = component(vf[mesh.owner()[facei]], cmpt);
-                    const scalar vN = component(vf[mesh.neighbour()[facei]], cmpt);
-                    tvCmpt = max(min(vO, vN), min(max(vO, vN), tvCmpt));
-                }
-            }
-            else if (deltaK > 0.5)
-            {
+                // Smooth flow: use the mesh-weighted linear value - correction is zero,
+                // scheme is conservative, SIMPLE stays stable.
                 tvCmpt = component(tlinear.ref()[facei], cmpt);
             }
             else
@@ -162,6 +163,7 @@ tenoScheme<Type>::correction(
                 const scalar dS = delta0 + delta1;
                 scalar raw = (dS < SMALL) ? r0 : (delta0/dS)*r0 + (delta1/dS)*r1;
 
+                // Clamp to owner-neighbour range: prevents LSQ extrapolation blow-up.
                 const label o = mesh.owner()[facei];
                 const label n = mesh.neighbour()[facei];
                 const scalar vO = component(vf[o], cmpt);
@@ -180,4 +182,4 @@ tenoScheme<Type>::correction(
 
 makeSurfaceInterpolationScheme(tenoScheme)
 
-}
+} // namespace Foam

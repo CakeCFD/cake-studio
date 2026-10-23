@@ -42,6 +42,8 @@
 #include <QStandardPaths>
 #include <QFont>
 
+// helpers
+
 static QString fmtSize(qint64 b)
 {
     if (b < 0)       return {};
@@ -51,6 +53,8 @@ static QString fmtSize(qint64 b)
     return QString("%1 GB").arg(b >> 30);
 }
 
+// construction
+
 FileBrowserDialog::FileBrowserDialog(Mode mode, const QString& startDir,
                                      const QString& filter, QWidget* parent)
     : QDialog(parent), m_mode(mode)
@@ -58,12 +62,14 @@ FileBrowserDialog::FileBrowserDialog(Mode mode, const QString& startDir,
     setMinimumSize(820, 540);
     resize(940, 600);
 
-    const ThemeColors& tc = ThemeEngine::instance().colors();
-    m_textColor    = tc.text.name();
-    m_subTextColor = tc.textMuted.name();
-    m_dimTextColor = tc.textDim.name();
-    m_accentColor  = tc.accent.name();
+    // Resolve theme colors once so all inline styles are consistent
+    bool isDark = ThemeEngine::instance().current() == Theme::Dark;
+    m_textColor    = isDark ? "#cdd6f4" : "#e0e0e0";
+    m_subTextColor = isDark ? "#6c7086" : "#888888";
+    m_dimTextColor = isDark ? "#585b70" : "#666666";
+    m_accentColor  = isDark ? "#89b4fa" : "#f5c500";
 
+    // Parse filter sections  e.g. "Cake Files (*.cake);;All Files (*)"
     if (!filter.isEmpty()) {
         for (const QString& sec : filter.split(";;"))
             if (!sec.trimmed().isEmpty())
@@ -76,6 +82,7 @@ FileBrowserDialog::FileBrowserDialog(Mode mode, const QString& startDir,
     root->setContentsMargins(8, 8, 8, 8);
     root->setSpacing(6);
 
+    // Breadcrumb row
     auto* bcRow = new QHBoxLayout;
 
     auto* upBtn = new QToolButton;
@@ -95,15 +102,18 @@ FileBrowserDialog::FileBrowserDialog(Mode mode, const QString& startDir,
 
     root->addLayout(bcRow);
 
+    // Splitter: sidebar | file list
     auto* splitter = new QSplitter(Qt::Horizontal);
     splitter->setChildrenCollapsible(false);
 
+    // Left sidebar
     m_bookmarks = new QListWidget;
     m_bookmarks->setFixedWidth(175);
     m_bookmarks->setFrameStyle(QFrame::NoFrame);
     m_bookmarks->setFocusPolicy(Qt::NoFocus);
     m_bookmarks->setSpacing(1);
 
+    // Right file list
     m_fileList = new QTreeWidget;
     m_fileList->setHeaderLabels({"Name", "Size", "Modified"});
     m_fileList->header()->setSectionResizeMode(0, QHeaderView::Stretch);
@@ -123,6 +133,7 @@ FileBrowserDialog::FileBrowserDialog(Mode mode, const QString& startDir,
     splitter->setStretchFactor(1, 1);
     root->addWidget(splitter, 1);
 
+    // Bottom bar
     auto* bottomRow = new QHBoxLayout;
 
     if (mode == SaveFile) {
@@ -157,6 +168,7 @@ FileBrowserDialog::FileBrowserDialog(Mode mode, const QString& startDir,
     bottomRow->addWidget(cancelBtn);
     root->addLayout(bottomRow);
 
+    // Bookmarks
     auto addSep = [this](const QString& label) {
         auto* it = new QListWidgetItem(label);
         it->setFlags(Qt::NoItemFlags);
@@ -188,6 +200,7 @@ FileBrowserDialog::FileBrowserDialog(Mode mode, const QString& startDir,
             addBookmark(QFileInfo(r).fileName(), r);
     }
 
+    // Connections
     connect(upBtn,       &QToolButton::clicked,                this, &FileBrowserDialog::goUp);
     connect(m_fileList,  &QTreeWidget::itemActivated,          this, &FileBrowserDialog::onItemActivated);
     connect(m_fileList,  &QTreeWidget::itemClicked,            this, &FileBrowserDialog::onItemClicked);
@@ -203,10 +216,13 @@ FileBrowserDialog::FileBrowserDialog(Mode mode, const QString& startDir,
         connect(m_filterCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, &FileBrowserDialog::onFilterChanged);
 
+    // Initial navigation
     QString start = (!startDir.isEmpty() && QDir(startDir).exists())
                     ? startDir : QDir::homePath();
     navigateTo(start);
 }
+
+// bookmarks
 
 void FileBrowserDialog::addBookmark(const QString& label, const QString& path)
 {
@@ -216,6 +232,8 @@ void FileBrowserDialog::addBookmark(const QString& label, const QString& path)
     it->setToolTip(path);
     m_bookmarks->addItem(it);
 }
+
+// navigation
 
 void FileBrowserDialog::navigateTo(const QString& path)
 {
@@ -300,7 +318,7 @@ void FileBrowserDialog::populateList()
             it->setText(0, fi.fileName());
             it->setText(2, fi.lastModified().toString("yyyy-MM-dd  hh:mm"));
             it->setData(0, Qt::UserRole,     fi.absoluteFilePath());
-            it->setData(0, Qt::UserRole + 1, true);
+            it->setData(0, Qt::UserRole + 1, true);  // isDir
             it->setForeground(2, QColor(m_subTextColor));
             it->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
             m_fileList->addTopLevelItem(it);
@@ -325,6 +343,8 @@ void FileBrowserDialog::populateList()
         }
     }
 }
+
+// slots
 
 void FileBrowserDialog::goUp()
 {
@@ -410,6 +430,7 @@ void FileBrowserDialog::onAccept()
         return;
     }
 
+    // OpenFile
     if (m_selected.isEmpty()) {
         auto* sel = m_fileList->currentItem();
         if (sel && !sel->data(0, Qt::UserRole + 1).toBool())
@@ -418,12 +439,14 @@ void FileBrowserDialog::onAccept()
     if (!m_selected.isEmpty()) accept();
 }
 
+// delete + undo
+
 void FileBrowserDialog::showContextMenu(const QPoint& pos)
 {
     auto* item = m_fileList->itemAt(pos);
     if (!item) return;
     bool isDir = item->data(0, Qt::UserRole + 1).toBool();
-    if (isDir) return;
+    if (isDir) return;  // only allow deleting files, not directories
 
     QMenu menu(this);
     auto* delAct = menu.addAction("Delete");
@@ -450,6 +473,7 @@ void FileBrowserDialog::deleteSelected()
     QString filePath = item->data(0, Qt::UserRole).toString();
     QString fileName = QFileInfo(filePath).fileName();
 
+    // Confirm dialog: requires explicit click on "Delete" button
     QMessageBox confirm(this);
     confirm.setWindowTitle("Confirm Delete");
     confirm.setText(QString("Delete <b>%1</b>?").arg(fileName));
@@ -462,6 +486,7 @@ void FileBrowserDialog::deleteSelected()
 
     if (confirm.clickedButton() != delBtn) return;
 
+    // Move to trash dir instead of permanent delete
     QString trashDir = QDir::tempPath() + "/.cakecfd_trash";
     QDir().mkpath(trashDir);
 
@@ -486,6 +511,7 @@ void FileBrowserDialog::undoDelete()
     auto [origPath, trashPath] = m_trashStack.last();
     QString fileName = QFileInfo(origPath).fileName();
 
+    // Make sure destination dir still exists
     QDir destDir = QFileInfo(origPath).dir();
     if (!destDir.exists()) {
         QMessageBox::warning(this, "Undo Failed",
@@ -510,6 +536,8 @@ void FileBrowserDialog::undoDelete()
         populateList();
 }
 
+// key events
+
 void FileBrowserDialog::keyPressEvent(QKeyEvent* e)
 {
     if (e->key() == Qt::Key_Backspace) {
@@ -525,6 +553,9 @@ void FileBrowserDialog::keyPressEvent(QKeyEvent* e)
         return;
     }
     if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) {
+        // QLineEdit emits returnPressed (already wired to onAccept) and then
+        // lets the key propagate here; activating the highlighted list item
+        // too would replace the typed name with that file's
         if (m_nameEdit && m_nameEdit->hasFocus()) return;
         auto* sel = m_fileList->currentItem();
         if (sel) onItemActivated(sel, 0);
@@ -532,6 +563,8 @@ void FileBrowserDialog::keyPressEvent(QKeyEvent* e)
     }
     QDialog::keyPressEvent(e);
 }
+
+// filter parsing
 
 QStringList FileBrowserDialog::parseExtensions(const QString& section) const
 {
@@ -542,6 +575,8 @@ QStringList FileBrowserDialog::parseExtensions(const QString& section) const
     return exts;
 }
 
+// recent dirs
+
 void FileBrowserDialog::addRecentDir(const QString& path)
 {
     QSettings s("CakeCFD", "CakeStudio");
@@ -551,6 +586,8 @@ void FileBrowserDialog::addRecentDir(const QString& path)
     while (recents.size() > 8) recents.removeLast();
     s.setValue("recentDirs", recents);
 }
+
+// static convenience methods
 
 QString FileBrowserDialog::getOpenFileName(QWidget* parent, const QString& title,
                                            const QString& dir, const QString& filter)

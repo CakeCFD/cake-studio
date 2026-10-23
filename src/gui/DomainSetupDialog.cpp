@@ -18,7 +18,6 @@
 \*---------------------------------------------------------------------------*/
 
 #include "DomainSetupDialog.h"
-#include "themes/ThemeEngine.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -38,10 +37,12 @@
 #include <QMessageBox>
 #include <QSettings>
 #include <QRegularExpression>
-#include "BCEditorDialog.h"
+#include "BCEditorDialog.h"   // OFDict scanner
 #include <algorithm>
 #include <cmath>
 #include <optional>
+
+// STL bounds parser
 
 bool DomainSetupDialog::computeBounds()
 {
@@ -93,6 +94,8 @@ bool DomainSetupDialog::computeBounds()
     return m_Lc > 0;
 }
 
+// axis-aware domain bounds
+
 void DomainSetupDialog::getDomainBounds(double& x0, double& x1,
                                          double& y0, double& y1,
                                          double& z0, double& z1) const
@@ -126,12 +129,14 @@ void DomainSetupDialog::getDomainBounds(double& x0, double& x1,
         x0 = cx - side * m_Lc;       x1 = cx + side * m_Lc;
         y0 = cy - side * m_Lc;       y1 = cy + side * m_Lc;
         z0 = m_gz0 - up   * m_Lc;   z1 = m_gz1 + down * m_Lc;
-    } else {
+    } else {  // -Z
         x0 = cx - side * m_Lc;       x1 = cx + side * m_Lc;
         y0 = cy - side * m_Lc;       y1 = cy + side * m_Lc;
         z0 = m_gz0 - down * m_Lc;   z1 = m_gz1 + up   * m_Lc;
     }
 }
+
+// construction
 
 DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
                                      const QString& caseDir,
@@ -148,9 +153,11 @@ DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
     auto* root = new QVBoxLayout(this);
     root->setSpacing(8);
 
+    // header
     root->addWidget(new QLabel(
         "<b style='font-size:13px;'>Aerodynamic Domain Setup</b>", this));
 
+    // geometry info
     auto* geoBox  = new QGroupBox("Geometry", this);
     auto* geoForm = new QFormLayout(geoBox);
     geoForm->addRow("File:", new QLabel(QFileInfo(stlPath).fileName(), this));
@@ -167,7 +174,8 @@ DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
     }
     root->addWidget(geoBox);
 
-    m_flowAxis = new QComboBox(this);
+    // flow axis - locked to -X for V1; geometry must be oriented nose-forward before importing
+    m_flowAxis = new QComboBox(this);  // kept for API compat, not shown
     m_flowAxis->addItem("-X", "-X");
     auto* axisBox  = new QGroupBox("Airflow Direction", this);
     auto* axisForm = new QFormLayout(axisBox);
@@ -182,6 +190,7 @@ DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
     axisForm->addRow("Angle of attack:", m_aoa);
     root->addWidget(axisBox);
 
+    // domain extents
     auto* domBox  = new QGroupBox("Domain Extents  (× char. length)", this);
     auto* domForm = new QFormLayout(domBox);
 
@@ -203,6 +212,7 @@ DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
     domForm->addRow("Bounds:", m_domainLabel);
     root->addWidget(domBox);
 
+    // mesh
     auto* meshBox  = new QGroupBox("Mesh", this);
     auto* meshForm = new QFormLayout(meshBox);
 
@@ -218,6 +228,7 @@ DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
     meshForm->addRow("Est. cells:", m_cellsLabel);
     root->addWidget(meshBox);
 
+    // refinement
     auto* refBox  = new QGroupBox("Refinement", this);
     auto* refForm = new QFormLayout(refBox);
 
@@ -233,12 +244,15 @@ DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
     refForm->addRow(m_addLayers, m_nLayers);
     root->addWidget(refBox);
 
+    // buttons
     auto* btnRow  = new QHBoxLayout;
     auto* notNow  = new QPushButton("Not Now", this);
     auto* generate = new QPushButton("Generate Files", this);
     generate->setDefault(true);
-    ThemeEngine::setRole(generate, "primary");
-    generate->setStyleSheet("QPushButton { padding:6px 16px; }");
+    generate->setStyleSheet(
+        "QPushButton { background:#f5c500; color:#1a1a1a; font-weight:bold; "
+        "padding:6px 16px; border-radius:3px; }"
+        "QPushButton:hover { background:#ffd740; }");
     btnRow->addWidget(notNow);
     btnRow->addStretch();
     btnRow->addWidget(generate);
@@ -247,12 +261,17 @@ DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
     connect(notNow,   &QPushButton::clicked, this, &QDialog::reject);
     connect(generate, &QPushButton::clicked, this, &DomainSetupDialog::onGenerate);
 
+    // Live preview: all parameter spinners + axis combo
     auto upd = [this](double){ updatePreview(); };
     for (auto* s : {m_upstreamMult, m_downstreamMult, m_sideMult, m_cellSize})
         connect(s, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, upd);
     connect(m_flowAxis, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int){ updatePreview(); });
 
+    // Defer the initial preview emit to the next event-loop tick.
+    // The PropertiesPanel calls connect() *after* constructing this dialog,
+    // so an immediate updatePreview() would fire before any slot is connected
+    // and the viewport would never show the initial cyan box + cone.
     QTimer::singleShot(0, this, &DomainSetupDialog::updatePreview);
 }
 
@@ -283,6 +302,8 @@ void DomainSetupDialog::updatePreview()
                         m_flowAxis->currentData().toString());
 }
 
+// file generation
+
 void DomainSetupDialog::onGenerate()
 {
     if (m_caseDir.isEmpty()) {
@@ -305,12 +326,15 @@ void DomainSetupDialog::onGenerate()
         return;
     }
 
-    const QString axis = "-X";
+    const QString axis = "-X";   // V1: always -X - orient geometry nose-forward before importing
     double  aoa  = m_aoa ? m_aoa->value() : 0.0;
 
+    // Persist axis + AoA so other panels (viewport, CakeMeshPanel) stay in sync
     QSettings().setValue("domainSetup/flowAxis", axis);
     QSettings().setValue("domainSetup/aoa", aoa);
 
+    // Rewrite 0/U with the velocity vector for the new axis so the next solver run
+    // uses the correct direction without needing a separate SolverConfig re-apply.
     for (const QString& uPath : {m_caseDir + "/0/U",
                                   m_caseDir + "/0.orig/U",
                                   m_caseDir + "/0.org/U"}) {
@@ -319,6 +343,8 @@ void DomainSetupDialog::onGenerate()
         QString txt = uFile.readAll();
         uFile.close();
 
+        // Only internalField and the inlet patch's value are rotated: walls
+        // (fixedValue uniform (0 0 0)) and other patches must stay untouched
         using namespace OFDict;
         static const QRegularExpression reUni(
             R"(^uniform\s*\(\s*([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s*\)$)");
@@ -329,6 +355,7 @@ void DomainSetupDialog::onGenerate()
             if (!mm.hasMatch()) return std::nullopt;
             double a = mm.captured(1).toDouble(), b = mm.captured(2).toDouble(),
                    c = mm.captured(3).toDouble();
+            // Replace just the value text after the keyword
             int vs = skipWsComments(txt, e->keyEnd, e->end);
             int ve = txt.lastIndexOf(';', e->end - 1);
             if (ve < vs) return std::nullopt;
@@ -347,6 +374,7 @@ void DomainSetupDialog::onGenerate()
             }
         }
 
+        // Speed from the inlet (a zero internalField is a legitimate start-from-rest)
         double spd = 0.0;
         for (const Slot& s : inletSlots) spd = std::max(spd, s.mag);
         if (spd < 1e-9 && internal) spd = internal->mag;
@@ -361,6 +389,8 @@ void DomainSetupDialog::onGenerate()
         else if (axis == "+Y" || axis == "-Y") newVec = QString("(%2 %1 0)").arg(sign*u0,0,'g',6).arg(u1,0,'g',6);
         else                                   newVec = QString("(0 %2 %1)").arg(sign*u0,0,'g',6).arg(u1,0,'g',6);
 
+        // Back to front so earlier offsets stay valid; zero-valued entries
+        // (start from rest, wall-like inletValue) keep their value
         QList<Slot> edits = inletSlots;
         if (internal) edits << *internal;
         std::sort(edits.begin(), edits.end(),
@@ -372,7 +402,7 @@ void DomainSetupDialog::onGenerate()
         if (uFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
             QTextStream(&uFile) << txt;
         }
-        break;
+        break;  // only update the first 0/U found
     }
 
     auto btn = QMessageBox::question(this, "Files Generated",
@@ -420,14 +450,27 @@ bool DomainSetupDialog::writeBlockMeshDict()
         return QString("    (%1 %2 %3)\n").arg(a,0,'f',6).arg(b,0,'f',6).arg(c,0,'f',6);
     };
 
+    // inlet / outlet / symmetry side patches based on flow axis
+    // Vertex indices:
+    //   v0=(x0,y0,z0) v1=(x1,y0,z0) v2=(x1,y1,z0) v3=(x0,y1,z0)
+    //   v4=(x0,y0,z1) v5=(x1,y0,z1) v6=(x1,y1,z1) v7=(x0,y1,z1)
+    // Face lists (outward normals via RHR):
+    //   X-min(-X): (0 4 7 3)    X-max(+X): (1 2 6 5)
+    //   Y-min(-Y): (0 1 5 4)    Y-max(+Y): (3 7 6 2)
+    //   Z-min(-Z): (0 3 2 1)    Z-max(+Z): (4 5 6 7)
+
+    // Side patches use the same names as BlockMeshWriter / CaseGenerator's 0/
+    // files (top=+Y, bottom=-Y, front=+Z, back=-Z) so every patch has a BC.
+    // X faces are only sides for Y/Z flow axes, which the UI does not offer.
     struct Face { QString name, verts; };
     QList<Face> faces = {
-        {"left",   "(0 4 7 3)"}, {"right", "(1 2 6 5)"},
-        {"bottom", "(0 1 5 4)"}, {"top",   "(3 7 6 2)"},
-        {"back",   "(0 3 2 1)"}, {"front", "(4 5 6 7)"},
+        {"left",   "(0 4 7 3)"}, {"right", "(1 2 6 5)"},   // -X, +X
+        {"bottom", "(0 1 5 4)"}, {"top",   "(3 7 6 2)"},   // -Y, +Y
+        {"back",   "(0 3 2 1)"}, {"front", "(4 5 6 7)"},   // -Z, +Z
     };
     QString axis = m_flowAxis->currentData().toString();
 
+    // Index of the min/max face along the flow axis
     int axisIdx = axis.endsWith('X') ? 0 : axis.endsWith('Y') ? 2 : 4;
     bool positive = axis.startsWith('+');
     QString inletFace  = faces[axisIdx + (positive ? 0 : 1)].verts;
@@ -442,14 +485,14 @@ bool DomainSetupDialog::writeBlockMeshDict()
 
     QString text = foamHeader("dictionary", "blockMeshDict");
     text += "scale   1;\n\nvertices\n(\n";
-    text += v(x0,y0,z0);
-    text += v(x1,y0,z0);
-    text += v(x1,y1,z0);
-    text += v(x0,y1,z0);
-    text += v(x0,y0,z1);
-    text += v(x1,y0,z1);
-    text += v(x1,y1,z1);
-    text += v(x0,y1,z1);
+    text += v(x0,y0,z0);  // 0
+    text += v(x1,y0,z0);  // 1
+    text += v(x1,y1,z0);  // 2
+    text += v(x0,y1,z0);  // 3
+    text += v(x0,y0,z1);  // 4
+    text += v(x1,y0,z1);  // 5
+    text += v(x1,y1,z1);  // 6
+    text += v(x0,y1,z1);  // 7
     text += ");\n\n";
     text += QString("blocks\n(\n    hex (0 1 2 3 4 5 6 7) (%1 %2 %3) simpleGrading (1 1 1)\n);\n\n")
             .arg(nx).arg(ny).arg(nz);
@@ -482,6 +525,7 @@ bool DomainSetupDialog::writeSnappyHexMeshDict()
     getDomainBounds(x0, x1, y0, y1, z0, z1);
     double cx = (x0+x1)/2, cy = (y0+y1)/2, cz = (z0+z1)/2;
 
+    // locationInMesh: near the inlet face, inside the domain and outside the geometry
     double locX, locY, locZ;
     double frac = 0.08;
     QString axis = m_flowAxis->currentData().toString();
@@ -587,13 +631,13 @@ bool DomainSetupDialog::writeSnappyHexMeshDict()
         "debug  0;\n"
         "mergeTolerance  1e-6;\n"
     )
-    .arg(layers ? "true" : "false")
-    .arg(m_geoName)
-    .arg(surfMax)
-    .arg(surfMin).arg(surfMax)
-    .arg(refRegion)
-    .arg(locX,0,'f',4).arg(locY,0,'f',4).arg(locZ,0,'f',4)
-    .arg(layersSect);
+    .arg(layers ? "true" : "false")   // %1
+    .arg(m_geoName)                   // %2
+    .arg(surfMax)                     // %3 feature level
+    .arg(surfMin).arg(surfMax)        // %4 %5 surface refinement
+    .arg(refRegion)                   // %6
+    .arg(locX,0,'f',4).arg(locY,0,'f',4).arg(locZ,0,'f',4)  // %7 %8 %9
+    .arg(layersSect);                 // %10
 
     QFile f(m_caseDir + "/system/snappyHexMeshDict");
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;

@@ -1,3 +1,4 @@
+#!/bin/bash
 python3 "$(dirname "$0")/mock_server.py" 8765 &
 SERVER_PID=$!
 sleep 1

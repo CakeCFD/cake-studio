@@ -53,6 +53,7 @@ void SolverRunner::run(const QString& solver, const QString& caseDir,
     connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &SolverRunner::onFinished);
 
+    // Single-quote each extra argument so it reaches the solver verbatim
     QString argStr;
     for (const QString& a : args) {
         QString q = a;
@@ -60,6 +61,9 @@ void SolverRunner::run(const QString& solver, const QString& caseDir,
         argStr += " '" + q + "'";
     }
 
+    // Source OF environment, run solver, tee output to log.<solver> for RunLogger.
+    // setsid puts bash, the solver and tee in their own process group so stop()
+    // can signal all of them instead of orphaning the solver.
     QString cmd = QString(
         "set -o pipefail; source /usr/lib/openfoam/openfoam2412/etc/bashrc 2>/dev/null && %1%2 2>&1 | tee log.%1")
         .arg(solver, argStr);
@@ -80,8 +84,8 @@ void SolverRunner::run(const QString& solver, const QString& caseDir,
 void SolverRunner::stop() {
     if (m_process && m_process->state() != QProcess::NotRunning) {
         m_stopRequested = true;
-        // setsid execs bash without forking because QProcess children are never group
-        // leaders, so the pid is also the process group id
+        // setsid (not forked, since QProcess children are never group leaders)
+        // execs bash, so the pid is also the process group id
         const qint64 pgid = m_process->processId();
         if (pgid > 0) ::kill(-static_cast<pid_t>(pgid), SIGTERM);
         else          m_process->terminate();
@@ -113,13 +117,19 @@ void SolverRunner::onReadyReadStderr() {
 }
 
 void SolverRunner::onFinished(int exitCode, QProcess::ExitStatus status) {
+    // A user stop shows up as a CrashExit or a non-zero code from the signalled pipeline
     m_lastRunStopped = m_stopRequested;
     m_lastRunCrashed = (status == QProcess::CrashExit);
     m_stopRequested = false;
     emit solverFinished(exitCode);
 }
 
+// Parses OpenFOAM residual lines like:
+// smoothSolver:  Solving for Ux, Initial residual = 0.1, Final residual = 1e-5, No Iterations 3
 void SolverRunner::parseLine(const QString& line) {
+    // Each "Time = ..." line starts a new step. Count steps rather than using the
+    // time value: transient times are fractional (1e-05, 0.0242) and an integer
+    // looking transient time (1, 2) must not make the x-axis jump backwards.
     static QRegularExpression timeRe(R"(^Time = ([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*s?$)");
     auto timeMatch = timeRe.match(line);
     if (timeMatch.hasMatch()) {
@@ -141,6 +151,8 @@ void SolverRunner::parseLine(const QString& line) {
     r.iterations = match.captured(4).toInt();
     r.iteration  = m_currentIter;
 
+    // Only emit the first residual per field per timestep - subsequent inner
+    // PIMPLE/PISO iterations are filtered out to keep the plot clean.
     if (m_emittedThisStep.contains(r.field)) return;
     m_emittedThisStep.insert(r.field);
     emit residualParsed(r);

@@ -18,7 +18,6 @@
 \*---------------------------------------------------------------------------*/
 
 #include "MeshQualityDialog.h"
-#include "themes/ThemeEngine.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -41,11 +40,11 @@ MeshQualityDialog::MeshQualityDialog(const QString& caseDir, QWidget* parent)
 
     m_status = new QLabel("Click 'Run checkMesh' to analyse the mesh.");
     m_status->setStyleSheet(
-        "padding:5px 8px; background:palette(alternate-base); border-radius:4px;");
+        "padding:5px 8px; background:#181825; border-radius:4px; color:#cdd6f4;");
     root->addWidget(m_status);
 
     m_progress = new QProgressBar;
-    m_progress->setRange(0, 0);
+    m_progress->setRange(0, 0);   // indeterminate
     m_progress->setMaximumHeight(4);
     m_progress->setTextVisible(false);
     m_progress->hide();
@@ -53,6 +52,7 @@ MeshQualityDialog::MeshQualityDialog(const QString& caseDir, QWidget* parent)
 
     auto* split = new QSplitter(Qt::Vertical);
 
+    // Summary table
     m_table = new QTableWidget(0, 4);
     m_table->setHorizontalHeaderLabels({"Metric", "Value", "OpenFOAM Guideline", "Status"});
     m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
@@ -66,6 +66,7 @@ MeshQualityDialog::MeshQualityDialog(const QString& caseDir, QWidget* parent)
     m_table->setMinimumHeight(180);
     split->addWidget(m_table);
 
+    // Raw log
     m_rawText = new QPlainTextEdit;
     m_rawText->setReadOnly(true);
     m_rawText->setMaximumBlockCount(10000);
@@ -114,6 +115,8 @@ void MeshQualityDialog::onRun()
             this, [this](int code, QProcess::ExitStatus) { onFinished(code); });
 
     const QString ofBashrc = "/usr/lib/openfoam/openfoam2412/etc/bashrc";
+    // Paths go in as positional args ($1, $2), never spliced into the script,
+    // so case dirs containing quotes or spaces are safe
     const QString cmd = R"(source "$1" 2>/dev/null; cd "$2" && checkMesh -allGeometry -allTopology 2>&1)";
     m_proc->start("bash", {"-c", cmd, "bash", ofBashrc, m_caseDir});
 }
@@ -138,11 +141,9 @@ void MeshQualityDialog::onFinished(int code)
         ? (meshOK ? "checkMesh: Mesh OK; no issues found."
                   : "checkMesh completed: review warnings above.")
         : "checkMesh finished with errors: see log below.");
-    const ThemeColors& tc = ThemeEngine::instance().colors();
-    const QColor tone = meshOK ? tc.success : (code == 0 ? tc.warning : tc.danger);
     m_status->setStyleSheet(QString(
-        "padding:5px 8px; border-radius:4px; border:1px solid %1; background:rgba(%2,%3,%4,40);")
-        .arg(tone.name()).arg(tone.red()).arg(tone.green()).arg(tone.blue()));
+        "padding:5px 8px; border-radius:4px; color:#cdd6f4; background:%1;")
+        .arg(meshOK ? "#1e3a1e" : (code == 0 ? "#3a300a" : "#3a1010")));
 }
 
 double MeshQualityDialog::extractDouble(const QString& text, const QString& pattern)
@@ -189,6 +190,7 @@ void MeshQualityDialog::parseAndDisplay(const QString& out)
     auto dbl = [&](const QString& p) { return extractDouble(out, p); };
     auto str = [&](const QString& p) { return extractString(out, p); };
 
+    // Topology
     QString cells = str(R"(cells:\s*(\d+))");
     if (!cells.isEmpty())
         addRow({"Total cells", cells, "-", Metric::OK});
@@ -205,6 +207,9 @@ void MeshQualityDialog::parseAndDisplay(const QString& out)
     if (!intFaces.isEmpty())
         addRow({"Internal faces", intFaces, "-", Metric::OK});
 
+    // Geometry. Floats may carry exponents (skewness 9.8e-15); patterns
+    // accept both v2412 wording ("Mesh non-orthogonality Max: X average: Y",
+    // "Min volume = X. Max volume = Y.") and the older "= value" wording.
     const QString F = R"(([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?))";
     auto dblAny = [&](std::initializer_list<QString> pats) {
         for (const QString& p : pats) {
@@ -241,6 +246,8 @@ void MeshQualityDialog::parseAndDisplay(const QString& out)
                 "< 100 ideal", ar < 100 ? Metric::OK : ar < 1000 ? Metric::WARN : Metric::ERROR});
     }
 
+    // Min volume can legitimately be negative (inverted cells): match the
+    // sign explicitly instead of treating -1 as "not found"
     double minVol = -1.0;
     bool   haveMinVol = false;
     for (const QString& p : {QString(R"(\bMin volume\s*=\s*%F)"),
@@ -263,6 +270,7 @@ void MeshQualityDialog::parseAndDisplay(const QString& out)
     if (totalVol >= 0)
         addRow({"Total mesh volume", QString::number(totalVol,'e',4)+" m³", "-", Metric::OK});
 
+    // Failed checks
     double negVol = dbl(R"((\d+)\s+cells with negative volume)");
     if (negVol < 0) negVol = dbl(R"(Number of negative volume cells\s*:\s*(\d+))");
     if (negVol > 0)
@@ -277,6 +285,7 @@ void MeshQualityDialog::parseAndDisplay(const QString& out)
     if (openEdges > 0)
         addRow({"Open edges", QString::number((int)openEdges), "0", Metric::WARN});
 
+    // Overall
     bool meshOK = out.contains("Mesh OK", Qt::CaseInsensitive);
     addRow({"Overall result", meshOK ? "Mesh OK" : "Issues found",
             "No errors", meshOK ? Metric::OK : Metric::ERROR});

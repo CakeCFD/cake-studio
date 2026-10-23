@@ -18,7 +18,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "ThermalPropertiesDialog.h"
-#include "BCEditorDialog.h"
+#include "BCEditorDialog.h"   // OFDict scanner
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -59,6 +59,7 @@ ThermalPropertiesDialog::ThermalPropertiesDialog(const QString& caseDir, QWidget
     auto* root = new QVBoxLayout(this);
     root->setSpacing(8);
 
+    // Solver type
     auto* typeBox = new QGroupBox("Solver / EOS");
     auto* typeForm = new QFormLayout(typeBox);
 
@@ -97,6 +98,7 @@ ThermalPropertiesDialog::ThermalPropertiesDialog(const QString& caseDir, QWidget
 
     root->addWidget(typeBox);
 
+    // Mixture properties
     auto* mixBox = new QGroupBox("Mixture properties");
     auto* mixForm = new QFormLayout(mixBox);
 
@@ -114,6 +116,7 @@ ThermalPropertiesDialog::ThermalPropertiesDialog(const QString& caseDir, QWidget
 
     root->addWidget(mixBox);
 
+    // Sutherland extras (hidden by default)
     m_suthBox = new QGroupBox("Sutherland coefficients");
     auto* suthForm = new QFormLayout(m_suthBox);
     m_as = makeSpin(1e-8, 1, 1.458e-6, 10);
@@ -123,6 +126,7 @@ ThermalPropertiesDialog::ThermalPropertiesDialog(const QString& caseDir, QWidget
     m_suthBox->hide();
     root->addWidget(m_suthBox);
 
+    // Equation-of-state extras (only the one the selected EOS needs is shown)
     m_eosBox = new QGroupBox("Equation of state");
     auto* eosForm = new QFormLayout(m_eosBox);
     m_rho  = makeSpin(1e-6, 1e5, 1.225, 4, "kg/m³");
@@ -131,6 +135,7 @@ ThermalPropertiesDialog::ThermalPropertiesDialog(const QString& caseDir, QWidget
     eosForm->addRow("pRef:", m_pRef);
     root->addWidget(m_eosBox);
 
+    // Status + buttons
     m_statusLbl = new QLabel;
     m_statusLbl->setStyleSheet("font-size:11px;");
     root->addWidget(m_statusLbl);
@@ -150,6 +155,7 @@ ThermalPropertiesDialog::ThermalPropertiesDialog(const QString& caseDir, QWidget
     connect(btnApply,    &QPushButton::clicked,          this, &ThermalPropertiesDialog::onApply);
 
     auto syncEos = [this, eosForm](const QString& eos) {
+        // Qt5 has no QFormLayout::setRowVisible: toggle field + label
         auto showRow = [eosForm](QWidget* w, bool on) {
             w->setVisible(on);
             if (QWidget* l = eosForm->labelForField(w)) l->setVisible(on);
@@ -161,6 +167,7 @@ ThermalPropertiesDialog::ThermalPropertiesDialog(const QString& caseDir, QWidget
     };
     connect(m_eos, &QComboBox::currentTextChanged, this, syncEos);
 
+    // Air janaf defaults (Tlow 200 K, Thigh 3500 K)
     m_janafTlow    = "200";
     m_janafThigh   = "3500";
     m_janafTcommon = "1000";
@@ -179,6 +186,7 @@ void ThermalPropertiesDialog::loadExisting()
     const QString t = QString::fromUtf8(f.readAll());
 
     using namespace OFDict;
+    // Entries of the sub-dict reached by following dict keys from the top level
     auto dictAt = [&t](const QStringList& path) -> QPair<QList<DictEntry>, bool> {
         QList<DictEntry> cur = topLevelEntries(t, 0, t.size());
         for (const QString& k : path) {
@@ -207,6 +215,7 @@ void ThermalPropertiesDialog::loadExisting()
 
     if (!dictAt({"thermoType"}).second) return;
 
+    // Existing case: show its own values, editable, instead of a preset
     m_preset->setCurrentText("Custom");
 
     setCombo(m_thermoType, value({"thermoType"}, "type"));
@@ -288,6 +297,7 @@ void ThermalPropertiesDialog::onApply()
             .arg(m_pr->value(), 0, 'f', 6);
     }
 
+    // janaf ignores Cp/Hf and needs its polynomial coefficients instead
     QString thermoBlock;
     if (m_thermo->currentText() == "janaf") {
         thermoBlock = QString(
@@ -306,6 +316,7 @@ void ThermalPropertiesDialog::onApply()
             + "    }\n";
     }
 
+    // Coefficients the chosen equation of state requires (perfectGas has none)
     QString eosBlock;
     const QString eos = m_eos->currentText();
     if (eos == "rhoConst")

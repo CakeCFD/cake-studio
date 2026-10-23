@@ -1,3 +1,8 @@
+#!/bin/bash
+# Build CakeCFD AppImage
+# Usage: ./scripts/build_appimage.sh [--release]
+# Requires: cmake build already done, or pass --build to rebuild first
+
 set -e
 cd "$(dirname "$0")/.."
 
@@ -8,6 +13,7 @@ APPDIR="AppDir"
 ICON_SRC="packaging/cakecfd.svg"
 ICON_PNG="packaging/cakecfd.png"
 
+# Optionally rebuild
 if [ "$BUILD_TYPE" = "--build" ]; then
     echo "Building CakeCFD..."
     cmake --build build --target CFDStudio -j"$(nproc)"
@@ -18,6 +24,7 @@ if [ ! -f "$BINARY" ]; then
     exit 1
 fi
 
+# Convert SVG icon to PNG (256x256)
 if [ ! -f "$ICON_PNG" ]; then
     echo "Converting icon..."
     if command -v rsvg-convert &>/dev/null; then
@@ -33,6 +40,7 @@ if [ ! -f "$ICON_PNG" ]; then
     fi
 fi
 
+# Download linuxdeploy tools
 mkdir -p "$TOOLS_DIR"
 
 LINUXDEPLOY="$TOOLS_DIR/linuxdeploy-x86_64.AppImage"
@@ -52,8 +60,10 @@ if [ ! -f "$LINUXDEPLOY_QT" ]; then
     chmod +x "$LINUXDEPLOY_QT"
 fi
 
+# Clean previous AppDir
 rm -rf "$APPDIR"
 
+# Bundle binary + Qt + all shared libs
 echo "Bundling application..."
 export QMAKE="${QMAKE:-qmake}"
 export PATH="$TOOLS_DIR:$PATH"
@@ -66,10 +76,13 @@ export PATH="$TOOLS_DIR:$PATH"
     --plugin qt \
     --output appimage
 
+# Replace generated AppRun with ours (sources OpenFOAM before launch)
 echo "Installing custom AppRun..."
 cp packaging/AppRun "$APPDIR/AppRun"
 chmod +x "$APPDIR/AppRun"
 
+# Re-package with appimagetool (linuxdeploy already ran it, so this just re-wraps)
+# The AppImage is already output by linuxdeploy above as CakeCFD-x86_64.AppImage
 APPIMAGE=$(ls CakeCFD-*.AppImage 2>/dev/null | head -1)
 if [ -n "$APPIMAGE" ]; then
     echo ""

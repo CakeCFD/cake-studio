@@ -36,11 +36,12 @@ private slots:
 
 private:
     void buildFile();
-    void loadExisting();
+    void loadExisting();   // populate widgets from constant/thermophysicalProperties
 
     QString m_caseDir;
-    QString m_energy = "sensibleEnthalpy";
+    QString m_energy = "sensibleEnthalpy";   // kept from the existing file
 
+    // janaf coefficients, kept verbatim from the existing file (air defaults otherwise)
     QString m_janafTlow, m_janafThigh, m_janafTcommon, m_janafHigh, m_janafLow;
 
     QComboBox*      m_preset;
@@ -55,10 +56,12 @@ private:
     QDoubleSpinBox* m_mu;
     QDoubleSpinBox* m_pr;
 
+    // Sutherland extras
     QGroupBox*      m_suthBox;
     QDoubleSpinBox* m_as;
     QDoubleSpinBox* m_ts;
 
+    // Equation-of-state extras (rhoConst: rho, incompressiblePerfectGas: pRef)
     QGroupBox*      m_eosBox;
     QDoubleSpinBox* m_rho;
     QDoubleSpinBox* m_pRef;

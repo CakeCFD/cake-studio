@@ -1,3 +1,7 @@
+# CakeCFD - example config
+# Run from project root:
+#   ./build/src/cli/cfdstudio --config examples/sphere.yaml
+#   ./build/src/cli/cfdstudio --config examples/sphere.yaml --json
 
 geometry:
   file: tests/mesh_pipeline_test/sphere.brep   # path relative to project root

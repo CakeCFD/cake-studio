@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.20)
-project(CFDStudio VERSION 0.1.0 LANGUAGES CXX C)
+project(CFDStudio VERSION 0.1.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,14 +13,13 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONCPP REQUIRED jsoncpp)
 
 if(NOT TARGET JsonCpp::JsonCpp)
-    find_library(JSONCPP_LIB jsoncpp HINTS ${JSONCPP_LIBRARY_DIRS} REQUIRED)
     add_library(JsonCpp::JsonCpp SHARED IMPORTED GLOBAL)
     set_target_properties(JsonCpp::JsonCpp PROPERTIES
-        IMPORTED_LOCATION ${JSONCPP_LIB}
-        INTERFACE_INCLUDE_DIRECTORIES "${JSONCPP_INCLUDE_DIRS}")
+        IMPORTED_LOCATION /usr/lib/x86_64-linux-gnu/libjsoncpp.so
+        INTERFACE_INCLUDE_DIRECTORIES /usr/include/jsoncpp)
 endif()
 
-find_package(Qt5 REQUIRED COMPONENTS Widgets OpenGL)
+find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGL)
 find_package(VTK 9 REQUIRED COMPONENTS
     CommonCore CommonDataModel RenderingCore RenderingOpenGL2
     InteractionStyle FiltersGeneral IOGeometry IOImport

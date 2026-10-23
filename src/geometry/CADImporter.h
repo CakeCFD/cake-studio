@@ -21,6 +21,7 @@
 #include <QString>
 #include <memory>
 
+// Forward-declare OCCT types to keep this header lean
 class TopoDS_Shape;
 
 namespace CFD {
@@ -35,12 +36,13 @@ struct CADImportResult {
     int numShells   = 0;
     int numFaces    = 0;
     int numEdges    = 0;
-    double volume   = 0.0;
+    double volume   = 0.0;  // mm^3 (STEP/IGES native units)
     double surfArea = 0.0;
 };
 
 class CADImporter {
 public:
+    // Detect format from extension if AUTO
     static CADImportResult load(const QString& filePath,
                                 CADFormat format = CADFormat::AUTO);
 
@@ -53,4 +55,4 @@ private:
     static void            computeStats(CADImportResult& result);
 };
 
-}
+} // namespace CFD

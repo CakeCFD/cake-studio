@@ -1,0 +1,43 @@
+name: Kubuntu 26.04 / Qt6 build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:26.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl gnupg
+          curl -fsSL https://dl.openfoam.com/add-debian-repo.sh | bash
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake pkgconf \
+            qt6-base-dev libqt6opengl6-dev \
+            libvtk9-dev libvtk9-qt-dev \
+            libocct-data-exchange-dev libocct-modeling-data-dev \
+            libocct-modeling-algorithms-dev libocct-visualization-dev \
+            libjsoncpp-dev libyaml-cpp-dev openfoam2412-dev
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel 4
+
+      - name: Build TENO scheme library
+        shell: bash
+        run: |
+          source /usr/lib/openfoam/openfoam2412/etc/bashrc
+          (cd src/solver/schemes/TENO && wmake libso)

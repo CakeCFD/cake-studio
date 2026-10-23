@@ -30,12 +30,16 @@ BlockMeshParams BlockMeshWriter::defaultParams(
     const std::array<double,6>& b, double padding, int cells)
 {
     double dx = b[1]-b[0], dy = b[3]-b[2], dz = b[5]-b[4];
+    // A planar or line-like STL has a zero extent in some direction, which would
+    // give a zero-volume block. Treat any degenerate extent as a fraction of the
+    // largest one (or 1 m if the whole bbox is degenerate) before padding.
     {
         const double maxExt = std::max({dx, dy, dz});
         const double minExt = (maxExt > 0.0) ? 0.1 * maxExt : 1.0;
         auto fix = [&](double& d) { if (!(d > 1e-9 * std::max(maxExt, 1.0))) d = minExt; };
         fix(dx); fix(dy); fix(dz);
     }
+    // Centre of the (possibly widened) bbox, so the geometry stays in the middle
     const double cx = 0.5*(b[0]+b[1]), cy = 0.5*(b[2]+b[3]), cz = 0.5*(b[4]+b[5]);
     BlockMeshParams p;
     const double hx = (0.5 + padding)*dx, hy = (0.5 + padding)*dy, hz = (0.5 + padding)*dz;
@@ -45,6 +49,7 @@ BlockMeshParams BlockMeshWriter::defaultParams(
         cz - hz, cz + hz
     };
     p.padding  = padding;
+    // Scale cell counts to keep roughly cubic cells
     double maxD = std::max({dx, dy, dz});
     p.cellsX = std::max(4, int(cells * dx / maxD));
     p.cellsY = std::max(4, int(cells * dy / maxD));
@@ -84,6 +89,10 @@ bool BlockMeshWriter::write(const QString& caseDir, const BlockMeshParams& p)
         << ") simpleGrading (1 1 1)\n);\n\n"
         << "edges ();\n\n"
         << "boundary\n(\n"
+        // V1 flow is -X: inlet must be the X-max face (1 2 6 5) so the inlet
+        // velocity (-U 0 0) points INTO the domain. Keep in sync with
+        // DomainSetupDialog's -X mapping, or phi leaves through the inlet and
+        // the compressible solvers abort on negative temperature.
         << "    inlet  { type patch; faces ((1 2 6 5)); }\n"
         << "    outlet { type patch; faces ((0 4 7 3)); }\n"
         << "    top    { type symmetry; faces ((3 7 6 2)); }\n"
@@ -95,4 +104,4 @@ bool BlockMeshWriter::write(const QString& caseDir, const BlockMeshParams& p)
     return true;
 }
 
-}
+} // namespace CFD

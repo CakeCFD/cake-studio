@@ -45,16 +45,19 @@ public slots:
 
 private:
     void addSection(const QString& title);
+    // Read-only display
     void addRow(const QString& label, const QString& value, bool mono = false);
     void addBadge(const QString& text, bool ok);
+    // Editable rows: onCommit is called with the new value when the user commits
     void addEditableRow(const QString& label, const QString& value,
                         std::function<void(const QString&)> onCommit);
     void addComboRow(const QString& label, const QStringList& options, const QString& current,
                      std::function<void(const QString&)> onCommit);
+    // Full-width action button
     void addButton(const QString& label, std::function<void()> onClick);
 
-    void initContainer();
-    void buildBlankUI();
+    void initContainer(); // creates a clean empty scroll container
+    void buildBlankUI();  // initContainer + placeholder content
     void populateCase(const QString& caseDir);
     void populateMesh(const QString& caseDir);
     void populateGeo(const QString& path, const QString& caseDir);
@@ -67,6 +70,7 @@ private:
     QFormLayout* m_form     = nullptr;
     QString      m_caseDir;
 
+    // Last shown state: used by onThemeChanged() to rebuild in the correct theme
     int     m_lastType    = -1;
     QString m_lastPath;
     QString m_lastCaseDir;
