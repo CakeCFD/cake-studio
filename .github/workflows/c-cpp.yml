@@ -13,21 +13,22 @@ jobs:
       matrix:
         runner: [ ubuntu-24.04, ubuntu-24.04-arm ]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: apt-cache
         with:
-          path: ~/of-debs
-          key: openfoam2412-debs-${{ runner.arch }}-v1
+          path: ~/apt-debs
+          key: apt-debs-${{ runner.arch }}-v1
 
-      - name: Restore OpenFOAM packages
+      - name: Restore apt packages
         run: |
           echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-debs
           sudo rm -f /etc/apt/apt.conf.d/docker-clean
-          mkdir -p ~/of-debs
-          sudo cp ~/of-debs/*.deb /var/cache/apt/archives/ 2>/dev/null || true
+          mkdir -p ~/apt-debs
+          sudo cp ~/apt-debs/*.deb /var/cache/apt/archives/ 2>/dev/null || true
 
       - name: Install dependencies
         run: |
@@ -42,8 +43,15 @@ jobs:
             libjsoncpp-dev libyaml-cpp-dev \
             openfoam2412-dev
 
-      - name: Save OpenFOAM packages
-        run: cp /var/cache/apt/archives/openfoam2412*.deb ~/of-debs/
+      - name: Save apt packages
+        if: steps.apt-cache.outputs.cache-hit != 'true'
+        run: cp /var/cache/apt/archives/*.deb ~/apt-debs/
+
+      - uses: actions/cache/save@v4
+        if: steps.apt-cache.outputs.cache-hit != 'true'
+        with:
+          path: ~/apt-debs
+          key: apt-debs-${{ runner.arch }}-v1
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
