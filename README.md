@@ -34,7 +34,7 @@ Verification: the schemes as shipped are upwind-biased and second order. Faces
 are reconstructed from the upwind cell with a least-squares gradient, and near
 steep gradients the result is bounded by the neighbouring cell values. On smooth
 linear advection they measure about second order, matching linearUpwind in
-accuracy, not the fifth and sixth order of the reference formulation. The measurements are
+accuracy. The reference formulation is fifth and sixth order. The measurements are
 reproducible with validation/tools/advection_order.py (case VC-001). Work toward the full design order is in progress on the
 teno-kexact-wip branch, where a k-exact upwind-biased reconstruction reaches
 approximately fifth order on the same test.
@@ -102,7 +102,7 @@ then carry out the build steps below inside the WSL shell.
 One command builds the application and the TENO scheme library:
 
 ```bash
-git clone https://github.com/Trigodil/cake-studio.git
+git clone https://github.com/CakeCFD/cake-studio.git
 cd cake-studio
 ./build.sh
 ```

@@ -1,0 +1,27 @@
+name: Triage
+
+on:
+  pull_request_target:
+    types: [ opened, synchronize, reopened ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          sync-labels: true
+
+  welcome:
+    if: github.event.action == 'opened' && contains(fromJSON('["FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"]'), github.event.pull_request.author_association)
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr comment "$PR" --body "Thanks for the pull request, and welcome! A maintainer will review it soon. Once approved it goes through the merge queue, which rebuilds it on top of the latest branch before it lands."

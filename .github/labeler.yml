@@ -1,0 +1,48 @@
+A-gui:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/gui/**'
+          - 'resources/**'
+
+A-teno:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/solver/schemes/**'
+
+A-solver:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/solver/**'
+
+A-meshing:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/meshing/**'
+
+A-cli:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/cli/**'
+
+A-validation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'validation/**'
+          - 'tests/**'
+
+A-ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+          - 'packaging/**'
+          - 'cmake/**'
+          - 'CMakeLists.txt'
+          - 'build.sh'
+
+A-docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'README.md'
+          - 'CONTRIBUTING.md'
+          - 'docs/**'
+          - 'CITATION.cff'
