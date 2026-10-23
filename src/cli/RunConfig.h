@@ -26,24 +26,19 @@
 namespace CFD::CLI {
 
 struct RunConfig {
-    // Geometry
-    std::string geometryFile;       // path to STEP/IGES/BREP/STL
+    std::string geometryFile;
 
-    // Case
     std::string caseName   = "cfdCase";
     std::string outputDir  = "./cfd_output";
 
-    // Solver
-    std::string solver     = "simpleFoam";  // icoFoam simpleFoam pimpleFoam rhoSimpleFoam
-    std::string turbulence = "kOmegaSST";   // laminar SA kOmegaSST kEpsilon
+    std::string solver     = "simpleFoam";
+    std::string turbulence = "kOmegaSST";
     double inflowVelocity  = 10.0;
     double nu              = 1.5e-5;
 
-    // Background mesh
     double meshPadding = 0.5;
     int    bgMeshCells = 40;
 
-    // snappyHexMesh
     int    maxGlobalCells         = 2000000;
     int    maxLocalCells          = 100000;
     int    surfaceRefinementMin   = 2;
@@ -54,12 +49,11 @@ struct RunConfig {
     double firstLayerThickness    = 0.3;
     double minThickness           = 0.1;
 
-    // Run control
-    bool runMesh   = true;   // execute blockMesh + snappyHexMesh
-    bool runSolver = false;  // execute the solver after meshing
+    bool runMesh   = true;
+    bool runSolver = false;
     int  nCores    = 4;
 };
 
 RunConfig loadYAML(const std::string& path);
 
-} // namespace CFD::CLI
+}

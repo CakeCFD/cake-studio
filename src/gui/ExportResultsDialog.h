@@ -50,12 +50,10 @@ private:
 
     struct ForceRow {
         double time;
-        // Pressure (wave/form drag) + viscous (skin friction) components
-        double fp_x, fp_y, fp_z;   // pressure forces
-        double fv_x, fv_y, fv_z;   // viscous forces
-        double mp_x, mp_y, mp_z;   // pressure moments
-        double mv_x, mv_y, mv_z;   // viscous moments
-        // Convenience totals
+        double fp_x, fp_y, fp_z;
+        double fv_x, fv_y, fv_z;
+        double mp_x, mp_y, mp_z;
+        double mv_x, mv_y, mv_z;
         double fx()  const { return fp_x + fv_x; }
         double fy()  const { return fp_y + fv_y; }
         double fz()  const { return fp_z + fv_z; }
@@ -89,7 +87,6 @@ private:
 
     QString      m_caseDir;
 
-    // Export tab
     QTabWidget*     m_tabs         = nullptr;
     QLineEdit*      m_outputDir    = nullptr;
     QCheckBox*      m_chkResiduals = nullptr;
@@ -102,14 +99,12 @@ private:
     QLabel*         m_status       = nullptr;
     QString         m_lastExportDir;
 
-    // Reference quantities
-    QDoubleSpinBox* m_spRho    = nullptr;   // density [kg/m³]
-    QDoubleSpinBox* m_spAref   = nullptr;   // reference area [m²]
-    QDoubleSpinBox* m_spLref   = nullptr;   // reference length [m]
-    QDoubleSpinBox* m_spUref   = nullptr;   // reference velocity [m/s] (0 = auto from inlet)
-    QDoubleSpinBox* m_spAoa    = nullptr;   // angle of attack [deg] (auto-detected from 0/U)
+    QDoubleSpinBox* m_spRho    = nullptr;
+    QDoubleSpinBox* m_spAref   = nullptr;
+    QDoubleSpinBox* m_spLref   = nullptr;
+    QDoubleSpinBox* m_spUref   = nullptr;
+    QDoubleSpinBox* m_spAoa    = nullptr;
 
-    // Runs tab
     QListWidget* m_runsList        = nullptr;
     QLineEdit*   m_reportsDir      = nullptr;
     QLabel*      m_runsStatus      = nullptr;

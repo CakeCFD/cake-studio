@@ -70,8 +70,6 @@ CaseGenerator::Result CaseGenerator::generate(
         return res;
     }
 
-    // Remove numeric time directories (solver output) so they don't bleed into
-    // the new run. Leave everything else the user may have put there untouched.
     for (const QString& entry : root.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         bool ok = false;
         entry.toDouble(&ok);
@@ -81,18 +79,16 @@ CaseGenerator::Result CaseGenerator::generate(
     QString systemDir = root.filePath("system");
     QString constDir  = root.filePath("constant");
     QString dir0      = root.filePath("0");
-    root.mkpath(systemDir);
-    root.mkpath(constDir);
-    root.mkpath(dir0);
+    root.mkpath("system");
+    root.mkpath("constant");
+    root.mkpath("0");
 
-    // 1. Write surface STL
     QString stlPath = SurfaceMeshWriter::write(geo, params.caseDir, params.caseName);
     if (stlPath.isEmpty()) {
         res.errorMsg = "Failed to write surface STL";
         return res;
     }
 
-    // 2. blockMeshDict auto-sized from the geometry bbox plus padding
     auto bounds = geo.bounds();
     auto bmParams = BlockMeshWriter::defaultParams(bounds, params.meshPadding,
                                                     params.bgMeshCells);
@@ -101,7 +97,6 @@ CaseGenerator::Result CaseGenerator::generate(
         return res;
     }
 
-    // 3. snappyHexMeshDict + surfaceFeatureExtractDict
     SnappyParams snp;
     snp.surfaceName          = params.caseName;
     snp.nSurfaceLayers       = params.nBoundaryLayers;
@@ -113,15 +108,11 @@ CaseGenerator::Result CaseGenerator::generate(
     snp.layerExpansionRatio  = params.layerExpansionRatio;
     snp.finalLayerThickness  = params.firstLayerThickness;
     snp.minThickness         = params.minLayerThickness;
-    // locationInMesh is the midpoint between the inlet wall and the geometry front face.
-    // -X flow puts the inlet on X-max, so seed on that side (matches BlockMeshWriter).
-    // Y/Z are nudged off the domain centre by a fraction of a cell because with an even
-    // cell count the exact centre lies on a cell face and snappy rejects it.
     const auto& bm = bmParams;
     const double cellY = (bm.bounds[3] - bm.bounds[2]) / bm.cellsY;
     const double cellZ = (bm.bounds[5] - bm.bounds[4]) / bm.cellsZ;
     snp.locationInMesh = {
-        (bm.bounds[1] + bounds[1]) * 0.5,  // halfway between inlet and geometry X-max
+        (bm.bounds[1] + bounds[1]) * 0.5,
         (bm.bounds[2] + bm.bounds[3]) * 0.5 + 0.137 * cellY,
         (bm.bounds[4] + bm.bounds[5]) * 0.5 + 0.137 * cellZ
     };
@@ -131,7 +122,6 @@ CaseGenerator::Result CaseGenerator::generate(
         return res;
     }
 
-    // 4. fvSchemes / fvSolution / controlDict
     bool les  = isLES(params.turbulence);
     bool comp = isCompressible(params.solver);
     if (!writeFvSchemes(systemDir, les, comp, params.divScheme, isTransient(params.solver))
@@ -142,13 +132,11 @@ CaseGenerator::Result CaseGenerator::generate(
         return res;
     }
 
-    // 5. Boundary conditions (0/)
     if (!writeBoundaryConditions(dir0, params)) {
         res.errorMsg = "Failed to write boundary conditions";
         return res;
     }
 
-    // 6. Physical properties
     bool propOk = comp
         ? writeThermophysicalProperties(constDir)
         : writeTransportProperties(constDir, params.nu);
@@ -157,9 +145,6 @@ CaseGenerator::Result CaseGenerator::generate(
         return res;
     }
 
-    // 7. Generate shell run script
-    // Single-quote the case dir so spaces and shell metacharacters survive;
-    // an embedded ' is closed, escaped and reopened.
     QString quotedDir = params.caseDir;
     quotedDir.replace("'", "'\\''");
     QString runScript =
@@ -195,7 +180,6 @@ bool CaseGenerator::writeFvSchemes(const QString& systemDir, bool les, bool comp
     static const char header[] =
         "FoamFile\n{ version 2.0; format ascii; class dictionary; object fvSchemes; }\n\n";
 
-    // Build the div(phi,U) token from the scheme name
     QString divUScheme;
     if (divScheme == "teno6")
         divUScheme = "Gauss teno6";
@@ -207,7 +191,6 @@ bool CaseGenerator::writeFvSchemes(const QString& systemDir, bool les, bool comp
     const char* ddt = transient ? "Euler" : "steadyState";
 
     if (compressible) {
-        // For compressible, secondary scalar transports always use linearUpwind
         o << header
           << "ddtSchemes      { default " << ddt << "; }\n\n"
           << "gradSchemes     { default Gauss linear; }\n\n"
@@ -230,7 +213,6 @@ bool CaseGenerator::writeFvSchemes(const QString& systemDir, bool les, bool comp
           << "fluxRequired      { default no; p ; }\n\n"
           << "wallDist          { method meshWave; }\n";
     } else if (les) {
-        // For LES, TENO replaces the momentum div while viscous stress terms stay linear
         QString lesDiv = (divScheme == "teno6" || divScheme == "teno" || divScheme == "teno5")
             ? divUScheme : "Gauss linear";
         o << header
@@ -276,7 +258,6 @@ bool CaseGenerator::writeFvSolution(const QString& systemDir, SolverType solver)
     QFile f(systemDir + "/fvSolution");
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     QTextStream o(&f);
-    // U uses smoothSolver + symGaussSeidel for steady SIMPLE, PBiCGStab + DILU for transient
     const char* uSolver = isTransient(solver)
         ? "solver PBiCGStab; preconditioner DILU;"
         : "solver smoothSolver; smoother symGaussSeidel;";
@@ -319,7 +300,6 @@ bool CaseGenerator::writeFvSolution(const QString& systemDir, SolverType solver)
           << "    fields  { p 0.3; rho 0.05; }\n"
           << "    equations { U 0.5; h 0.5; k 0.5; omega 0.5; epsilon 0.5; }\n}\n";
     } else if (solver == SolverType::IcoFoam) {
-        // icoFoam reads a PISO dict
         o << "PISO\n{\n"
           << "    nCorrectors 2;\n"
           << "    nNonOrthogonalCorrectors 1;\n}\n";
@@ -328,7 +308,6 @@ bool CaseGenerator::writeFvSolution(const QString& systemDir, SolverType solver)
           << "    nOuterCorrectors 2;\n"
           << "    nCorrectors 2;\n"
           << "    nNonOrthogonalCorrectors 1;\n}\n\n"
-          // Transient runs skip under-relaxation (full update per step)
           << "relaxationFactors\n{\n"
           << "    equations { \".*\" 1; }\n}\n";
     }
@@ -375,7 +354,6 @@ bool CaseGenerator::writeControlDict(
       << "writeFormat     ascii;\n"
       << "writePrecision  8;\n"
       << "runTimeModifiable true;\n\n";
-    // libtenoScheme.so registers the teno and teno6 div schemes
     if (teno)
         o << "libs (\"libtenoScheme.so\");\n\n";
     o << "functions\n{\n"
@@ -415,7 +393,6 @@ bool CaseGenerator::writeBoundaryConditions(
     bool lesk = (p.turbulence == TurbulenceModel::DynamicKEqn);
     bool comp = isCompressible(p.solver);
 
-    // Use first VelocityInlet patch velocity when patchBCs is active
     double U = p.inflowVelocity;
     for (const auto& bc : p.patchBCs)
         if (bc.type == BCType::VelocityInlet) { U = bc.velocity; break; }
@@ -423,35 +400,28 @@ bool CaseGenerator::writeBoundaryConditions(
     const double _aoa  = p.aoaDeg * M_PI / 180.0;
     const double _sign = (p.flowAxis == "-X" || p.flowAxis == "-Y" || p.flowAxis == "-Z") ? -1.0 : 1.0;
     auto uVec = [&](double mag) -> QString {
-        double u0 = _sign * mag * std::cos(_aoa); // along flow axis
-        double u1 = mag * std::sin(_aoa);          // perpendicular (AoA lift component)
+        double u0 = _sign * mag * std::cos(_aoa);
+        double u1 = mag * std::sin(_aoa);
         if (p.flowAxis == "+X" || p.flowAxis == "-X")
             return QString("(%1 0 %2)").arg(u0, 0,'g',6).arg(u1, 0,'g',6);
         if (p.flowAxis == "+Y" || p.flowAxis == "-Y")
             return QString("(%2 %1 0)").arg(u0, 0,'g',6).arg(u1, 0,'g',6);
-        // +Z / -Z
         return QString("(0 %2 %1)").arg(u0, 0,'g',6).arg(u1, 0,'g',6);
     };
     double I = 0.05;
-    // Floor k so a zero inflow velocity does not give k = omega = 0
     double k_val = std::max(1.5 * (U*I) * (U*I), 1e-10);
-    // omega = k / (TVR * nu) with turbulent viscosity ratio TVR = 10
     double omega_val = std::max(k_val / (10.0 * std::max(p.nu, 1e-12)), 1e-6);
     double eps_val   = 0.09 * k_val * omega_val;
     double nut_val   = p.nu * 10.0;
     double nuTilda   = 5.0 * p.nu;
 
-    // nutkWallFunction needs k, which Spalart-Allmaras does not solve
     const QString nutWall = sa
         ? "type nutUSpaldingWallFunction; value uniform 0;"
         : "type nutkWallFunction; value uniform 0;";
     const bool dynLag = (p.turbulence == TurbulenceModel::DynamicLagrangian);
 
-    // Per-patch BC mode (GUI table)
     if (!p.patchBCs.isEmpty()) {
 
-        // Write one OpenFOAM field file with the per-patch boundary field.
-        // entryFor(bc) returns the content between the curly braces for that patch.
         auto writeF = [&](const QString& fname,
                            const char* foamClass,
                            const char* dims,
@@ -475,7 +445,6 @@ bool CaseGenerator::writeBoundaryConditions(
             return (bc.type == BCType::Symmetry) ? "type symmetry;" : "type zeroGradient;";
         };
 
-        // U
         if (!writeF("U", "volVectorField", "[0 1 -1 0 0 0 0]",
                 "uniform " + uVec(U),
                 [&](const PatchBC& bc) -> QString {
@@ -490,15 +459,12 @@ bool CaseGenerator::writeBoundaryConditions(
                     }
                 })) return false;
 
-        // p
         if (!writeF("p",
                 comp ? "volScalarField" : "volScalarField",
                 comp ? "[1 -1 -2 0 0 0 0]" : "[0 2 -2 0 0 0 0]",
                 comp ? "uniform 101325" : "uniform 0",
                 [&](const PatchBC& bc) -> QString {
                     if (comp) {
-                        // waveTransmissive (advective) needs a time derivative and
-                        // aborts under steadyState, so steady solvers fix p at the outlet
                         const bool steady = !isTransient(p.solver);
                         switch (bc.type) {
                         case BCType::VelocityInlet:
@@ -520,7 +486,6 @@ bool CaseGenerator::writeBoundaryConditions(
                     }
                 })) return false;
 
-        // T (compressible only)
         if (comp && !writeF("T", "volScalarField", "[0 0 0 1 0 0 0]", "uniform 300",
                 [&](const PatchBC& bc) -> QString {
                     switch (bc.type) {
@@ -530,7 +495,6 @@ bool CaseGenerator::writeBoundaryConditions(
                     }
                 })) return false;
 
-        // k (kOmegaSST or kEpsilon)
         if ((kw || ke) && !writeF("k", "volScalarField", "[0 2 -2 0 0 0 0]",
                 "uniform " + QString::number(k_val),
                 [&](const PatchBC& bc) -> QString {
@@ -544,7 +508,6 @@ bool CaseGenerator::writeBoundaryConditions(
                     }
                 })) return false;
 
-        // omega (kOmegaSST)
         if (kw && !writeF("omega", "volScalarField", "[0 0 -1 0 0 0 0]",
                 "uniform " + QString::number(omega_val),
                 [&](const PatchBC& bc) -> QString {
@@ -558,7 +521,6 @@ bool CaseGenerator::writeBoundaryConditions(
                     }
                 })) return false;
 
-        // nut (RANS models)
         if ((kw || ke || sa) && !writeF("nut", "volScalarField", "[0 2 -1 0 0 0 0]",
                 "uniform " + QString::number(nut_val),
                 [&](const PatchBC& bc) -> QString {
@@ -569,7 +531,6 @@ bool CaseGenerator::writeBoundaryConditions(
                     }
                 })) return false;
 
-        // epsilon (kEpsilon)
         if (ke && !writeF("epsilon", "volScalarField", "[0 2 -3 0 0 0 0]",
                 "uniform " + QString::number(eps_val),
                 [&](const PatchBC& bc) -> QString {
@@ -583,7 +544,6 @@ bool CaseGenerator::writeBoundaryConditions(
                     }
                 })) return false;
 
-        // k is the DynamicKEqn LES SGS kinetic energy
         if (lesk && !writeF("k", "volScalarField", "[0 2 -2 0 0 0 0]",
                 "uniform " + QString::number(k_val),
                 [&](const PatchBC& bc) -> QString {
@@ -595,17 +555,14 @@ bool CaseGenerator::writeBoundaryConditions(
                     }
                 })) return false;
 
-        // nut for all LES models, which v2412 reads as nut
         if (les && !writeF("nut", "volScalarField", "[0 2 -1 0 0 0 0]",
                 "uniform 0", symOrZero)) return false;
 
-        // flm / fmm (dynamicLagrangian Lagrangian-averaged coefficients)
         if (dynLag && (!writeF("flm", "volScalarField", "[0 4 -4 0 0 0 0]",
                                "uniform 0", symOrZero)
                     || !writeF("fmm", "volScalarField", "[0 4 -4 0 0 0 0]",
                                "uniform 1e-15", symOrZero))) return false;
 
-        // alphat (compressible + turbulence)
         if (comp && p.turbulence != TurbulenceModel::Laminar
                 && !writeF("alphat", "volScalarField", "[1 -1 -1 0 0 0 0]", "uniform 0",
                 [&](const PatchBC& bc) -> QString {
@@ -617,7 +574,6 @@ bool CaseGenerator::writeBoundaryConditions(
                     }
                 })) return false;
 
-        // nuTilda (SpalartAllmaras)
         if (sa && !writeF("nuTilda", "volScalarField", "[0 2 -1 0 0 0 0]",
                 "uniform " + QString::number(nuTilda),
                 [&](const PatchBC& bc) -> QString {
@@ -632,9 +588,7 @@ bool CaseGenerator::writeBoundaryConditions(
 
         return true;
     }
-    // End per-patch mode
 
-    // U
     {
         QFile f(d.filePath("U"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -651,7 +605,6 @@ bool CaseGenerator::writeBoundaryConditions(
           << "    front   { type symmetry; }\n"
           << "    back    { type symmetry; }\n}\n";
     }
-    // p is kinematic (m²/s²) when incompressible and thermodynamic (Pa) when compressible
     {
         QFile f(d.filePath("p"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -688,7 +641,6 @@ bool CaseGenerator::writeBoundaryConditions(
               << "    back    { type symmetry; }\n}\n";
         }
     }
-    // T for compressible only
     if (comp) {
         QFile f(d.filePath("T"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -705,7 +657,6 @@ bool CaseGenerator::writeBoundaryConditions(
           << "    front   { type symmetry; }\n"
           << "    back    { type symmetry; }\n}\n";
     }
-    // k (if needed)
     if (kw || ke) {
         QFile f(d.filePath("k"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -722,7 +673,6 @@ bool CaseGenerator::writeBoundaryConditions(
           << "    front   { type symmetry; }\n"
           << "    back    { type symmetry; }\n}\n";
     }
-    // omega (kOmegaSST)
     if (kw) {
         QFile f(d.filePath("omega"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -739,7 +689,6 @@ bool CaseGenerator::writeBoundaryConditions(
           << "    front   { type symmetry; }\n"
           << "    back    { type symmetry; }\n}\n";
     }
-    // k for dynamicKEqn (LES SGS kinetic energy)
     if (lesk) {
         QFile f(d.filePath("k"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -756,9 +705,6 @@ bool CaseGenerator::writeBoundaryConditions(
           << "    front   { type symmetry; }\n"
           << "    back    { type symmetry; }\n}\n";
     }
-    // nut is required by all LES models in v2412.
-    // dynamicLagrangian also reads flm and fmm; fmm starts at a tiny positive
-    // value because the initial nut = (flm/fmm)*delta^2*|S| divides by it.
     if (les) {
         struct LesField { const char* name; const char* dims; const char* init; };
         QVector<LesField> fields = { { "nut", "[0 2 -1 0 0 0 0]", "0" } };
@@ -784,7 +730,6 @@ bool CaseGenerator::writeBoundaryConditions(
               << "    back    { type symmetry; }\n}\n";
         }
     }
-    // alphat for compressible solvers with a turbulence model
     if (comp && p.turbulence != TurbulenceModel::Laminar) {
         QFile f(d.filePath("alphat"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -801,7 +746,6 @@ bool CaseGenerator::writeBoundaryConditions(
           << "    front   { type symmetry; }\n"
           << "    back    { type symmetry; }\n}\n";
     }
-    // nut is required by all RAS models
     if (kw || ke || sa) {
         QFile f(d.filePath("nut"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -818,7 +762,6 @@ bool CaseGenerator::writeBoundaryConditions(
           << "    front   { type symmetry; }\n"
           << "    back    { type symmetry; }\n}\n";
     }
-    // epsilon (kEpsilon only)
     if (ke) {
         QFile f(d.filePath("epsilon"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -835,7 +778,6 @@ bool CaseGenerator::writeBoundaryConditions(
           << "    front   { type symmetry; }\n"
           << "    back    { type symmetry; }\n}\n";
     }
-    // nuTilda (Spalart-Allmaras)
     if (sa) {
         QFile f(d.filePath("nuTilda"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -907,7 +849,6 @@ bool CaseGenerator::writeTurbulenceProperties(
           << "    printCoeffs  on;\n"
           << "    delta        cubeRootVol;\n"
           << "    cubeRootVolCoeffs { deltaCoeff 1; }\n";
-        // The dynamic models construct an LESfilter from their coeffs dict
         if (model == TurbulenceModel::DynamicKEqn || model == TurbulenceModel::DynamicLagrangian)
             o << "    " << turbModelName(model) << "Coeffs { filter simple; }\n";
         o << "}\n";
@@ -920,8 +861,6 @@ bool CaseGenerator::writeTurbulenceProperties(
     }
     o.flush();
 
-    // Write both names. v2412 reads turbulenceProperties, while momentumTransport
-    // keeps the case readable by the other tools that look for it.
     for (const QString& name : { QString("turbulenceProperties"), QString("momentumTransport") }) {
         QFile f(constDir + "/" + name);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -931,7 +870,7 @@ bool CaseGenerator::writeTurbulenceProperties(
     return true;
 }
 
-} // namespace CFD
+}
 
 bool CFD::CaseGenerator::generate_dicts_only(
     const CFD::CaseParams& params, const std::array<double,6>&)
@@ -940,9 +879,9 @@ bool CFD::CaseGenerator::generate_dicts_only(
     QString systemDir = root.filePath("system");
     QString constDir  = root.filePath("constant");
     QString dir0      = root.filePath("0");
-    root.mkpath(systemDir);
-    root.mkpath(constDir);
-    root.mkpath(dir0);
+    root.mkpath("system");
+    root.mkpath("constant");
+    root.mkpath("0");
 
     bool comp = isCompressible(params.solver);
     bool propOk = comp

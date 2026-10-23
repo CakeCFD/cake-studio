@@ -26,13 +26,11 @@ class vtkPoints;
 class vtkUnsignedCharArray;
 class vtkLookupTable;
 
-// Comet-tailed particles that ride along traced streamlines at the local flow speed
 class FlowParticles {
 public:
     FlowParticles();
 
     vtkActor* actor() const { return m_actor; }
-    // Takes vtkStreamTracer output; returns false when no line is long enough to animate
     bool setPaths(vtkPolyData* paths, const char* velName, vtkLookupTable* lut);
     void clear();
     bool empty() const { return m_parts.empty(); }
@@ -47,15 +45,15 @@ private:
     void sample(const Line& l, double t, float* xyz, unsigned char* rgb) const;
     void writeFrame();
 
-    std::vector<float>         m_pos;    // xyz per path point
-    std::vector<double>        m_time;   // integration time per path point
-    std::vector<unsigned char> m_rgb;    // colour per path point
+    std::vector<float>         m_pos;
+    std::vector<double>        m_time;
+    std::vector<unsigned char> m_rgb;
     std::vector<Line>          m_lines;
     std::vector<Particle>      m_parts;
 
     double m_clock = 0.0;
-    double m_rate  = 1.0;   // flow seconds per wall second
-    double m_tail  = 0.0;   // tail length in flow seconds
+    double m_rate  = 1.0;
+    double m_tail  = 0.0;
     double m_speed = 1.0;
 
     vtkSmartPointer<vtkPolyData>          m_poly;

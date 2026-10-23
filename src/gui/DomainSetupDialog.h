@@ -37,7 +37,6 @@ public:
 signals:
     void filesGenerated(const QString& caseDir);
     void loadRequested(const QString& caseDir, const QString& stlPath);
-    // Emitted on every parameter change for live viewport preview
     void previewChanged(double x0, double y0, double z0,
                         double x1, double y1, double z1,
                         const QString& flowAxis);
@@ -48,7 +47,6 @@ private slots:
 
 private:
     bool computeBounds();
-    // Axis-aware domain bounds shared by the preview, blockMesh and snappyHexMesh
     void getDomainBounds(double& x0, double& x1, double& y0, double& y1,
                          double& z0, double& z1) const;
     bool writeBlockMeshDict();
@@ -57,24 +55,21 @@ private:
 
     QString m_stlPath;
     QString m_caseDir;
-    QString m_geoName;  // filename without extension
+    QString m_geoName;
 
-    // Bounding box of the geometry
     double m_gx0, m_gx1, m_gy0, m_gy1, m_gz0, m_gz1;
-    double m_Lc;  // characteristic length
+    double m_Lc;
 
-    // Controls
     QDoubleSpinBox* m_upstreamMult   = nullptr;
     QDoubleSpinBox* m_downstreamMult = nullptr;
     QDoubleSpinBox* m_sideMult       = nullptr;
     QDoubleSpinBox* m_cellSize       = nullptr;
     QComboBox*      m_refinement     = nullptr;
     QComboBox*      m_flowAxis       = nullptr;
-    QDoubleSpinBox* m_aoa            = nullptr;  // angle of attack, degrees
+    QDoubleSpinBox* m_aoa            = nullptr;
     QCheckBox*      m_addLayers      = nullptr;
     QSpinBox*       m_nLayers        = nullptr;
 
-    // Preview labels
     QLabel* m_domainLabel = nullptr;
     QLabel* m_cellsLabel  = nullptr;
 };

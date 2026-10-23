@@ -53,11 +53,9 @@ int main(int argc, char* argv[])
     QCoreApplication app(argc, argv);
     using namespace CFD;
 
-    // Resolve test dir relative to the binary location (build/tests/mesh_pipeline_test/)
     const std::string testDir = std::string(argv[0]).substr(
         0, std::string(argv[0]).rfind('/')) + "/../../../tests/mesh_pipeline_test";
 
-    // Step 1 creates the BREP
     std::cout << "\n=== Step 1: Create sphere BREP (r=0.5m) ===\n" << std::flush;
     t0 = Clock::now();
     const std::string brepPath = testDir + "/sphere.brep";
@@ -69,7 +67,6 @@ int main(int argc, char* argv[])
         log("done");
     }
 
-    // Step 2 loads the BREP manually, bypassing CADImporter for now
     std::cout << "\n=== Step 2: Load BREP + tessellate ===\n" << std::flush;
     t0 = Clock::now();
 
@@ -107,7 +104,7 @@ int main(int argc, char* argv[])
               << ymn << "," << ymx << "] x ["
               << zmn << "," << zmx << "]  diag=" << diag << "\n" << std::flush;
 
-    double linDef = diag * 0.1 * 0.1; // 10% of 10% = 1% (coarse)
+    double linDef = diag * 0.1 * 0.1;
     double angDef = 20.0 * M_PI / 180.0;
     log("BRepMesh_IncrementalMesh linDef=" + std::to_string(linDef) + "...");
     BRepMesh_IncrementalMesh mesher(shape, linDef, false, angDef, true);
@@ -142,7 +139,6 @@ int main(int argc, char* argv[])
     std::cout << "  VTK points=" << poly->GetNumberOfPoints()
               << "  tris=" << poly->GetNumberOfCells() << "\n" << std::flush;
 
-    // Step 3 writes the STL and generates the case
     std::cout << "\n=== Step 3: Generate OpenFOAM case ===\n" << std::flush;
     t0 = Clock::now();
 
@@ -157,8 +153,6 @@ int main(int argc, char* argv[])
     writer->Write();
     log("STL written");
 
-    // Use CaseGenerator for all the dict files (skip geo import, pass nullptr-safe path)
-    // Re-use our bounding box for BlockMeshWriter directly
     log("Writing OF dictionaries...");
     std::array<double,6> bounds = {xmn,xmx,ymn,ymx,zmn,zmx};
     auto bmParams = CFD::BlockMeshWriter::defaultParams(bounds, 3.0, 20);
@@ -167,31 +161,26 @@ int main(int argc, char* argv[])
     CFD::SnappyParams snp;
     snp.surfaceName = "sphere";
     snp.nSurfaceLayers = 2;
-    // Point inside domain bbox but outside sphere - use 80% of padded extent
     double domXmin = xmn - 3.0*(xmx-xmn);
     snp.locationInMesh = { domXmin * 0.8, (ymn+ymx)*0.5, (zmn+zmx)*0.5 };
     CFD::SnappyConfigWriter::writeFeatureExtract(
         QString::fromStdString(caseDir), "sphere");
     CFD::SnappyConfigWriter::write(QString::fromStdString(caseDir), snp);
 
-    // Write fvSchemes/fvSolution/controlDict/BCs manually via CaseGenerator helpers
     CFD::CaseParams cp;
     cp.caseName = "sphere"; cp.caseDir = QString::fromStdString(caseDir);
     cp.solver = CFD::SolverType::SimpleFoam;
     cp.turbulence = CFD::TurbulenceModel::KOmegaSST;
     cp.inflowVelocity = 10.0; cp.nu = 1.5e-5;
 
-    // Write remaining dicts (fvSchemes etc) - access via static helpers
     QString sysDir = QString::fromStdString(caseDir + "/system");
     QString constDir = QString::fromStdString(caseDir + "/constant");
     QString dir0 = QString::fromStdString(caseDir + "/0");
     QDir().mkpath(sysDir); QDir().mkpath(constDir); QDir().mkpath(dir0);
 
-    // Use the full generator just for the dict-writing part
     auto res = CFD::CaseGenerator::generate_dicts_only(cp, bounds);
     log(res ? "dicts written" : "dict write failed");
 
-    // Step 4 runs OpenFOAM
     std::cout << "\n=== Step 4: OpenFOAM pipeline ===\n" << std::flush;
     std::string of = "source /usr/lib/openfoam/openfoam2412/etc/bashrc 2>/dev/null";
     std::string cd = "cd " + caseDir;

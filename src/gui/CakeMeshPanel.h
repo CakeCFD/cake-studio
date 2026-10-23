@@ -47,10 +47,9 @@ public:
 
     QJsonObject getState() const;
     void        setState(const QJsonObject& obj);
-    void        reset();   // clear all fields before wiring a new project
+    void        reset();
 
 signals:
-    // Emitted once the mesh is complete and ready for Studio
     void exportRequested(const QString& caseDir);
 
 private slots:
@@ -67,18 +66,16 @@ private:
     void buildGeometryTab(QTabWidget*);
     void buildMeshTab(QTabWidget*);
     void buildPhysicsTab(QTabWidget*);
-    void buildBCTable();                 // populates m_bcTable with domain + geometry rows
+    void buildBCTable();
     void log(const QString& msg);
     void runQueue(QStringList cmds, std::function<void(bool)> onDone);
     void runNextInQueue();
     void setRunning(bool);
     QString ofEnvPrefix() const;
 
-    // Geometry tab
     QLineEdit*   m_geoPath  = nullptr;
     QLabel*      m_geoStats = nullptr;
 
-    // Mesh tab
     QDoubleSpinBox* m_padding         = nullptr;
     QSpinBox*       m_bgCells         = nullptr;
     QSpinBox*       m_maxGlobal       = nullptr;
@@ -91,29 +88,25 @@ private:
     QDoubleSpinBox* m_firstLayerThick = nullptr;
     QDoubleSpinBox* m_minThickness    = nullptr;
 
-    // Physics / BCs tab
     QComboBox*      m_turbulence = nullptr;
-    QDoubleSpinBox* m_velocity   = nullptr;  // default inlet velocity (seeds BC table)
-    QDoubleSpinBox* m_aoa        = nullptr;  // angle of attack, degrees
+    QDoubleSpinBox* m_velocity   = nullptr;
+    QDoubleSpinBox* m_aoa        = nullptr;
     QDoubleSpinBox* m_nu         = nullptr;
-    QTableWidget*   m_bcTable    = nullptr;  // per-patch BC table (ANSYS-style)
+    QTableWidget*   m_bcTable    = nullptr;
     QLineEdit*      m_caseName   = nullptr;
     QLineEdit*      m_outputDir  = nullptr;
     QSpinBox*       m_cores      = nullptr;
 
-    // Action bar
     QPushButton* m_btnGenerate = nullptr;
     QPushButton* m_btnRunMesh  = nullptr;
-    QPushButton* m_btnExport   = nullptr;  // enabled only after mesh is done
+    QPushButton* m_btnExport   = nullptr;
     QLabel*      m_status      = nullptr;
     QTextEdit*   m_log         = nullptr;
 
-    // State
     std::shared_ptr<CFD::CADGeometry> m_geo;
     QString         m_caseDir;
     ViewportWidget* m_viewport = nullptr;
 
-    // Async command queue
     QProcess*                  m_process     = nullptr;
     QStringList                m_cmdQueue;
     bool                       m_queueFailed = false;

@@ -13,10 +13,11 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONCPP REQUIRED jsoncpp)
 
 if(NOT TARGET JsonCpp::JsonCpp)
+    find_library(JSONCPP_LIB jsoncpp HINTS ${JSONCPP_LIBRARY_DIRS} REQUIRED)
     add_library(JsonCpp::JsonCpp SHARED IMPORTED GLOBAL)
     set_target_properties(JsonCpp::JsonCpp PROPERTIES
-        IMPORTED_LOCATION /usr/lib/x86_64-linux-gnu/libjsoncpp.so
-        INTERFACE_INCLUDE_DIRECTORIES /usr/include/jsoncpp)
+        IMPORTED_LOCATION ${JSONCPP_LIB}
+        INTERFACE_INCLUDE_DIRECTORIES "${JSONCPP_INCLUDE_DIRS}")
 endif()
 
 find_package(Qt5 REQUIRED COMPONENTS Widgets OpenGL)

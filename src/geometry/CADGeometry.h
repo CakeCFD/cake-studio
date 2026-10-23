@@ -40,7 +40,6 @@ public:
 
     vtkSmartPointer<vtkPolyData> polyData() const { return m_poly; }
 
-    // Axis-aligned bounding box as {xmin,xmax,ymin,ymax,zmin,zmax}
     std::array<double,6> bounds() const;
 
     void retessellate(const TessellationParams& params);
@@ -50,4 +49,4 @@ private:
     vtkSmartPointer<vtkPolyData> m_poly;
 };
 
-} // namespace CFD
+}

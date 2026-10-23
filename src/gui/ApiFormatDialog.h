@@ -50,7 +50,6 @@ private:
     QPlainTextEdit*  m_sampleEdit;
     QPlainTextEdit*  m_resultEdit;
 
-    // Citation tab fields
     QLineEdit*       m_citeAuthors;
     QLineEdit*       m_citeTitle;
     QLineEdit*       m_citeJournal;

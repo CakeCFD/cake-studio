@@ -3,7 +3,7 @@ set -euo pipefail
 VERSION="${1:?usage: package.sh <version> [output-dir]}"
 OUT="${2:-dist}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-NAME="cakestudio-${VERSION}-ubuntu24.04-x86_64"
+NAME="cakestudio-${VERSION}-ubuntu24.04-$(uname -m)"
 TENO_LIB="${FOAM_USER_LIBBIN:-}/libtenoScheme.so"
 
 stage="$(mktemp -d)"

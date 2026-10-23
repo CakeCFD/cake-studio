@@ -23,6 +23,8 @@
 
 #include <QCoreApplication>
 #include <QString>
+#include <QDir>
+#include <QFileInfo>
 
 #include <iostream>
 #include <fstream>
@@ -30,7 +32,6 @@
 #include <chrono>
 #include <sstream>
 
-// tiny JSON helpers
 static std::string jstr(const std::string& s) {
     return "\"" + s + "\"";
 }
@@ -52,7 +53,6 @@ static void log(const std::string& msg, bool jsonMode) {
     if (!jsonMode) std::cout << msg << "\n" << std::flush;
 }
 
-// Wrap s in single quotes for bash; an embedded ' becomes '\''
 static std::string shQuote(const std::string& s) {
     std::string out = "'";
     for (char c : s) {
@@ -116,7 +116,6 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    // Load config
     CFD::CLI::RunConfig cfg;
     try { cfg = CFD::CLI::loadYAML(configPath); }
     catch (const std::exception& e) {
@@ -126,7 +125,9 @@ int main(int argc, char* argv[])
 
     log("[cfdstudio] Loaded: " + configPath, jsonMode);
 
-    // Load geometry
+    cfg.geometryFile = QFileInfo(QString::fromStdString(cfg.geometryFile)).absoluteFilePath().toStdString();
+    cfg.outputDir    = QDir(QString::fromStdString(cfg.outputDir)).absolutePath().toStdString();
+
     log("[" + std::to_string(ms()) + "ms] Loading geometry: " + cfg.geometryFile, jsonMode);
     auto geo = CFD::CADGeometry::fromFile(QString::fromStdString(cfg.geometryFile));
     if (!geo->isValid()) {
@@ -143,7 +144,6 @@ int main(int argc, char* argv[])
         + std::to_string(geo->importResult().numSolids) + " solid(s), "
         + std::to_string(geo->polyData()->GetNumberOfPoints()) + " VTK points", jsonMode);
 
-    // Build CaseParams
     CFD::CaseParams cp;
     cp.caseName        = QString::fromStdString(cfg.caseName);
     cp.caseDir         = QString::fromStdString(cfg.outputDir + "/" + cfg.caseName);
@@ -154,10 +154,8 @@ int main(int argc, char* argv[])
     cp.meshPadding     = cfg.meshPadding;
     cp.bgMeshCells     = cfg.bgMeshCells;
     cp.nBoundaryLayers = cfg.nBoundaryLayers;
-    // BlockMeshWriter puts the inlet on X-max, so the flow runs in -X
     cp.flowAxis        = "-X";
 
-    // snappyHexMesh controls from the mesh section
     cp.maxGlobalCells       = cfg.maxGlobalCells;
     cp.maxLocalCells        = cfg.maxLocalCells;
     cp.surfaceRefinementMin = cfg.surfaceRefinementMin;
@@ -167,7 +165,6 @@ int main(int argc, char* argv[])
     cp.firstLayerThickness  = cfg.firstLayerThickness;
     cp.minLayerThickness    = cfg.minThickness;
 
-    // Generate case
     log("[" + std::to_string(ms()) + "ms] Generating OpenFOAM case...", jsonMode);
     auto result = CFD::CaseGenerator::generate(*geo, cp);
     if (!result.success) {
@@ -182,7 +179,6 @@ int main(int argc, char* argv[])
     std::string caseDir = result.caseDir.toStdString();
     log("[" + std::to_string(ms()) + "ms] Case written: " + caseDir, jsonMode);
 
-    // Run OF pipeline
     int meshRC = 0;
     int solverRC = 0;
     if (cfg.runMesh) {
@@ -221,7 +217,6 @@ int main(int argc, char* argv[])
     }
 
 done:
-    // Output
     if (jsonMode) {
         std::cout << "{\n"
             << jkv("status", meshRC != 0   ? "mesh_failed"

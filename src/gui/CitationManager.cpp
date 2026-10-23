@@ -199,15 +199,13 @@ QString CitationManager::turbModelKey(const QString& ofModelName)
         {"SpalartAllmaras",    "spalartallmaras"},
         {"v2f",                "v2f"},
         {"Smagorinsky",        "smagorinsky"},
-        {"dynamicKEqn",        "dynamickEqn"},  // registry key is mixed-case
+        {"dynamicKEqn",        "dynamickEqn"},
         {"kEqn",               "keqn"},
         {"WALE",               "wale"},
         {"dynamicLagrangian",  "dynamiclagrangian"},
         {"dynamicSmagorinsky", "dynamicsmagorinsky"},
         {"Deardorff",          "deardorff"},
     };
-    // Exact (case-insensitive) match first, then the longest contained name,
-    // so kOmegaSST does not resolve to kOmega nor dynamicSmagorinsky to Smagorinsky
     const QString name = ofModelName.trimmed();
     for (auto it = table.begin(); it != table.end(); ++it)
         if (name.compare(it.key(), Qt::CaseInsensitive) == 0)
@@ -245,7 +243,6 @@ QStringList CitationManager::consumePending()
     return msgs;
 }
 
-// Escape LaTeX specials so titles/journals like "Computers & Fluids" compile
 static QString bibEscape(const QString& s)
 {
     QString out;
@@ -263,13 +260,11 @@ static QString bibEscape(const QString& s)
     return out;
 }
 
-// "Fu, L., Hu, X. Y., & Adams, N. A." -> "Fu, L. and Hu, X. Y. and Adams, N. A."
 static QString bibAuthors(const QString& apa)
 {
     if (apa.contains(" and ")) return apa;
     QString s = apa;
     s.replace(QRegularExpression(R"(,?\s*&\s*)"), ", ");
-    // An author ends where a comma follows the final initial's period
     QStringList names = s.split(QRegularExpression(R"((?<=\.)\s*,\s*)"), Qt::SkipEmptyParts);
     for (QString& n : names) n = n.trimmed();
     return names.join(" and ");
@@ -295,8 +290,8 @@ void CitationManager::writeBib(const QString& caseDir) const
             << "  journal = {" << bibEscape(c.journal) << "},\n"
             << "  year    = {" << bibEscape(c.year) << "},\n"
             << "  volume  = {" << bibEscape(c.volume) << "},\n"
-            << "  pages   = {" << c.pages << "},\n"   // "333--359" is already BibTeX
-            << "  doi     = {" << c.doi << "}\n"       // verbatim field in biblatex
+            << "  pages   = {" << c.pages << "},\n"
+            << "  doi     = {" << c.doi << "}\n"
             << "}\n\n";
     }
 }

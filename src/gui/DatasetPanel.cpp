@@ -21,7 +21,7 @@
 #include "DatasetPanel.h"
 #include "CitationManager.h"
 #include "ApiFormatDialog.h"
-#include "BCEditorDialog.h"   // OFDict scanner
+#include "BCEditorDialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -58,8 +58,6 @@
 #include <QFont>
 #include <QRegularExpression>
 #include <cmath>
-
-// inline result canvas
 
 class ResultCanvas : public QWidget {
 public:
@@ -122,7 +120,6 @@ protected:
         p.drawText(r, Qt::AlignTop|Qt::AlignRight, QString::number(vmax, 'g', 4));
         p.drawText(r, Qt::AlignBottom|Qt::AlignRight, QString::number(vmin, 'g', 4));
 
-        // Axis line
         p.setPen(QPen(palette().mid().color(), 1));
         if (vmin < 0 && vmax > 0) {
             double y0 = r.bottom() + vmin * dy;
@@ -135,18 +132,14 @@ private:
     QString m_label;
 };
 
-// polyMesh helpers
-
 static QMap<QString, QPair<int,int>> parseBoundary(const QString& caseDir)
 {
     QMap<QString, QPair<int,int>> out;
     QFile f(caseDir + "/constant/polyMesh/boundary");
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return out;
     QString txt = QString::fromUtf8(f.readAll());
-    // Strip C++ comments
     txt.replace(QRegularExpression("//[^\n]*"), "");
 
-    // Match patch blocks that contain nFaces and startFace (in either order)
     QRegularExpression re(
         R"(\b(\w+)\s*\{[^{}]*\bnFaces\s+(\d+)\s*;[^{}]*\bstartFace\s+(\d+)\s*;[^{}]*\}|)"
         R"(\b(\w+)\s*\{[^{}]*\bstartFace\s+(\d+)\s*;[^{}]*\bnFaces\s+(\d+)\s*;[^{}]*\})");
@@ -209,7 +202,6 @@ static QVector<QVector<int>> parseFaces(const QString& caseDir)
     return faces;
 }
 
-// One "x y z" triple per line; whitespace and/or commas separate components
 static QVector<double> parsePointLines(const QString& text)
 {
     static const QRegularExpression sep(R"([\s,]+)");
@@ -220,8 +212,6 @@ static QVector<double> parsePointLines(const QString& text)
     }
     return pts;
 }
-
-// construction
 
 DatasetPanel::DatasetPanel(QWidget* parent)
     : QWidget(parent)
@@ -246,7 +236,6 @@ DatasetPanel::DatasetPanel(QWidget* parent)
     m_spatialInterp->setCurrentText(m_settings.value("spatialInterp", "Lag4").toString());
     m_temporalInterp->setCurrentText(m_settings.value("temporalInterp", "None").toString());
 
-    // Custom-database citation saved by ApiFormatDialog in a previous session
     {
         auto cv = [this](const char* k) {
             return m_settings.value(QString("customApi/citation/") + k, "").toString();
@@ -258,8 +247,6 @@ DatasetPanel::DatasetPanel(QWidget* parent)
             CitationManager::instance().registerCustom("custom_endpoint", c);
     }
 
-    // Only auto-refresh if an endpoint is already configured - avoids noisy startup errors
-    // when the panel is first opened with no settings saved yet.
     if (!m_endpointEdit->text().trimmed().isEmpty())
         onRefreshDatasets();
     restoreResults();
@@ -268,7 +255,6 @@ DatasetPanel::DatasetPanel(QWidget* parent)
 void DatasetPanel::setCaseDir(const QString& dir)
 {
     m_activeCaseDir = dir;
-    // Reload patch list for this case
     if (m_patchCombo) {
         m_patchCombo->clear();
         m_patchCombo->addItem("(choose patch)");
@@ -279,7 +265,6 @@ void DatasetPanel::setCaseDir(const QString& dir)
 
 void DatasetPanel::buildUI()
 {
-    // Scroll area owns the content so the dock can shrink freely
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
     outer->setSpacing(0);
@@ -295,7 +280,6 @@ void DatasetPanel::buildUI()
     auto* root = new QVBoxLayout(content);
     root->setSpacing(6);
 
-    // API Settings
     auto* apiBox = new QGroupBox("API Settings");
     auto* apiL   = new QVBoxLayout(apiBox);
 
@@ -345,7 +329,6 @@ void DatasetPanel::buildUI()
     connect(refreshBtn, &QPushButton::clicked, this, &DatasetPanel::onRefreshDatasets);
     connect(fmtBtn,     &QPushButton::clicked, this, &DatasetPanel::onEditApiFormat);
 
-    // Dataset
     auto* dbBox = new QGroupBox("Dataset");
     auto* dbL   = new QVBoxLayout(dbBox);
 
@@ -363,7 +346,6 @@ void DatasetPanel::buildUI()
     fieldRow->addWidget(m_fieldCombo, 1);
     dbL->addLayout(fieldRow);
 
-    // Single time or range
     auto* tmodeRow = new QHBoxLayout;
     m_rbSingle = new QRadioButton("Single time:");
     m_rbRange  = new QRadioButton("Time range:");
@@ -376,7 +358,6 @@ void DatasetPanel::buildUI()
     tmodeRow->addStretch();
     dbL->addLayout(tmodeRow);
 
-    // Single time widget
     m_singleWidget = new QWidget;
     auto* singleL = new QHBoxLayout(m_singleWidget);
     singleL->setContentsMargins(0,0,0,0);
@@ -391,7 +372,6 @@ void DatasetPanel::buildUI()
     singleL->addStretch();
     dbL->addWidget(m_singleWidget);
 
-    // Range widget
     m_rangeWidget = new QWidget;
     auto* rangeL = new QHBoxLayout(m_rangeWidget);
     rangeL->setContentsMargins(0,0,0,0);
@@ -419,7 +399,6 @@ void DatasetPanel::buildUI()
     connect(m_tEnd,   QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, rangeUpdate);
     connect(m_tStep,  QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, rangeUpdate);
 
-    // Query Points
     auto* qBox = new QGroupBox("Query Points");
     auto* qL   = new QVBoxLayout(qBox);
 
@@ -469,14 +448,12 @@ void DatasetPanel::buildUI()
     m_exportRansBtn->setEnabled(false);
     m_copyPyBtn->setEnabled(false);
 
-    // First row holds the primary actions
     auto* qBtnRow = new QHBoxLayout;
     qBtnRow->addWidget(m_queryBtn);
     qBtnRow->addWidget(m_cancelBtn);
     qBtnRow->addStretch();
     qL->addLayout(qBtnRow);
 
-    // Second row holds secondary actions that share the panel width
     auto* qBtnRow2 = new QHBoxLayout;
     qBtnRow2->setSpacing(4);
     for (auto* btn : {m_viewReqBtn, m_exportBtn, m_exportRansBtn, m_copyPyBtn}) {
@@ -507,7 +484,6 @@ void DatasetPanel::buildUI()
     });
     connect(m_autowrapBtn, &QPushButton::clicked, this, &DatasetPanel::onAutowrap);
 
-    // Output
     auto* outBox = new QGroupBox("Output");
     auto* outL   = new QVBoxLayout(outBox);
 
@@ -546,8 +522,6 @@ void DatasetPanel::buildUI()
             QTextStream(&f) << m_log->toPlainText();
     });
 }
-
-// slots
 
 void DatasetPanel::onSaveSettings()
 {
@@ -654,7 +628,6 @@ void DatasetPanel::onQueryClicked()
                       ? m_datasets[idx].id : m_datasetCombo->currentText();
     QString field   = m_fieldCombo->currentText();
 
-    // Record last query for Python export
     m_lastQuery.dataset  = dataset;
     m_lastQuery.field    = field;
     m_lastQuery.endpoint = m_endpointEdit->text().trimmed();
@@ -754,7 +727,6 @@ void DatasetPanel::onQueryRangeFinished(const QString& dataset, const QString& f
     log(QString("=== %1 / %2  range done: %3 snapshots ===")
         .arg(dataset, field).arg(results.size()));
 
-    // Show last snapshot in canvas
     if (!results.isEmpty()) {
         m_lastSingleResult = results.last();
         m_canvas->setData(m_lastSingleResult, m_lastComponents,
@@ -762,7 +734,6 @@ void DatasetPanel::onQueryRangeFinished(const QString& dataset, const QString& f
                           .arg(field).arg(times.last()).arg(results.size()));
     }
 
-    // Turb stats across all snapshots combined
     if (field == "velocity") {
         QVector<double> allVel;
         for (const auto& r : results) allVel += r;
@@ -925,13 +896,11 @@ void DatasetPanel::onLoadPatchPoints(bool append)
 
 void DatasetPanel::onAutowrap()
 {
-    // Parse current points
     QVector<double> pts = parsePointLines(m_pointsEdit->toPlainText());
     if (pts.isEmpty()) return;
 
     static constexpr double kTwoPi = 6.283185307179586;
 
-    // Config dialog
     auto* dlg = new QDialog(this);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
     dlg->setWindowTitle("Autowrap Configuration");
@@ -939,7 +908,6 @@ void DatasetPanel::onAutowrap()
 
     auto* vl = new QVBoxLayout(dlg);
 
-    // Method selector
     auto* methodRow = new QHBoxLayout;
     methodRow->addWidget(new QLabel("Method:"));
     auto* rbMod   = new QRadioButton("Periodic (mod)");
@@ -956,7 +924,6 @@ void DatasetPanel::onAutowrap()
     modHint->setStyleSheet("font-size:11px; color:gray;");
     vl->addWidget(modHint);
 
-    // Domain bounds
     vl->addWidget(new QLabel("Target domain bounds:"));
     auto* form = new QFormLayout;
     auto mkSpin = [](double v) {
@@ -976,13 +943,11 @@ void DatasetPanel::onAutowrap()
     form->addRow("Z:", mkRow(zMin, zMax));
     vl->addLayout(form);
 
-    // Preview label
     auto* previewLbl = new QLabel;
     previewLbl->setStyleSheet("font-size:11px; color:gray;");
     previewLbl->setWordWrap(true);
     vl->addWidget(previewLbl);
 
-    // Compute + show preview
     auto updatePreview = [&]{
         double xS = xMax->value()-xMin->value();
         double yS = yMax->value()-yMin->value();
@@ -1022,7 +987,6 @@ void DatasetPanel::onAutowrap()
 
     if (dlg->exec() != QDialog::Accepted) return;
 
-    // Apply wrapping
     double xS = xMax->value() - xMin->value();
     double yS = yMax->value() - yMin->value();
     double zS = zMax->value() - zMin->value();
@@ -1031,7 +995,6 @@ void DatasetPanel::onAutowrap()
     bool doMod = rbMod->isChecked();
     int n = pts.size() / 3;
 
-    // Linear scale needs the source bbox
     double srcXMin=pts[0],srcXMax=pts[0],srcYMin=pts[1],srcYMax=pts[1],srcZMin=pts[2],srcZMax=pts[2];
     if (!doMod) {
         for (int i=0;i<n;++i){
@@ -1078,7 +1041,6 @@ void DatasetPanel::onError(const QString& msg)
     m_progress->setVisible(false);
     log("[ERROR] " + msg);
 }
-
 
 void DatasetPanel::onEditApiFormat()
 {
@@ -1131,7 +1093,6 @@ void DatasetPanel::restoreResults()
 
     if (m_lastStats.k > 0) { updateTurbStats(); m_exportRansBtn->setEnabled(true); }
     if (!m_lastSingleResult.isEmpty()) {
-        // Reconstruct a single-entry range so Import to CakeCFD works on restore
         m_lastRangeResults = { m_lastSingleResult };
         m_lastRangeTimes   = { m_lastTime };
         m_exportBtn->setEnabled(true);
@@ -1144,8 +1105,6 @@ void DatasetPanel::restoreResults()
 
 void DatasetPanel::log(const QString& msg) { m_log->append(msg); }
 
-// export helpers
-
 bool DatasetPanel::writeBoundaryData(const QString& caseDir, const QString& patch,
                                       const QVector<double>& points,
                                       const QList<QVector<double>>& valuesByTime,
@@ -1156,15 +1115,12 @@ bool DatasetPanel::writeBoundaryData(const QString& caseDir, const QString& patc
     QDir().mkpath(baseDir);
     int nPts = points.size() / 3;
 
-    // points file
     {
         QFile f(baseDir + "/points");
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
         QTextStream o(&f);
         o << "FoamFile\n{\n    version 2.0; format ascii;\n"
           << "    class vectorField; object points;\n}\n" << nPts << "\n(\n";
-        // 15 significant digits keep closely spaced face centres
-        // distinct or timeVaryingMapped's triangulation degenerates
         for (int i = 0; i < nPts; ++i)
             o << QString("  (%1 %2 %3)\n")
                  .arg(points[i*3], 0, 'g', 15)
@@ -1177,7 +1133,6 @@ bool DatasetPanel::writeBoundaryData(const QString& caseDir, const QString& patc
                 : components == 6 ? "symmTensorField"
                 : components == 3 ? "vectorField"
                 :                   "scalarField";
-    // File name must match the BC's fieldName entry (U, p, T, gradU, ...)
     const QString& fname = fieldName;
 
     for (int ti = 0; ti < times.size() && ti < valuesByTime.size(); ++ti) {
@@ -1214,9 +1169,6 @@ bool DatasetPanel::patchInletBC(const QString& caseDir, const QString& patch,
     QString src = QString::fromUtf8(f.readAll());
     f.close();
 
-    // Locate the patch as a whole-name, depth-1 entry of boundaryField and
-    // replace its full brace-matched dict (nested sub-dicts included), so
-    // "inlet" never matches "myinlet" and no stray '}' is left behind
     const auto top = OFDict::topLevelEntries(src, 0, src.size());
     const OFDict::DictEntry* bf = OFDict::findEntry(top, "boundaryField");
     if (!bf || bf->braceOpen < 0 || bf->braceClose < 0) return false;
@@ -1265,21 +1217,15 @@ bool DatasetPanel::writeRansBcs(const QString& caseDir, const CFD::TurbStats& s)
           << "    inlet  { type fixedValue; value uniform " << val << "; }\n"
           << "    outlet { type zeroGradient; }\n"
           << "    #include \"include/wallBC_" << name << "\"\n"
-          // The include ends with a ".*" wildcard so the geometry wall patch (named
-          // after the case) picks up the wall function without knowing its name. That
-          // wildcard also swallows the symmetry domain faces, and OpenFOAM aborts on a
-          // wall function applied to a symmetry patch. Among regex entries the LAST
-          // match wins, so re-declare them after the include to take them back.
           << "    \"(top|bottom|front|back|sides)\" { type symmetry; }\n"
           << "}\n";
         return true;
     };
 
-    // Create 0/include/ with wildcard wall-function entries if not already there
     QDir(caseDir + "/0/include").mkpath(".");
     auto writeWallBC = [&](const QString& name, const QString& wallType) {
         QString path = caseDir + "/0/include/wallBC_" + name;
-        if (QFile::exists(path)) return;  // don't overwrite user-customised files
+        if (QFile::exists(path)) return;
         QFile f(path);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return;
         QTextStream(&f) << "\".*\"\n{\n"
@@ -1329,8 +1275,6 @@ QVector<double> DatasetPanel::readPatchFaceCenters(const QString& caseDir,
     }
     return centers;
 }
-
-// Request viewer
 
 static QString buildSoapXml(const QString& method, const QString& token,
                               const QString& dataset, double time,
@@ -1389,7 +1333,6 @@ void DatasetPanel::onViewRequest()
     QString field   = m_fieldCombo->currentText();
     QString method  = fieldToMethod.value(field, "GetVelocity");
     double  t       = m_timeSpin->value();
-    // Enum names exactly as DatasetClient sends them (JHTDB WSDL vocabulary)
     QString si = DatasetClient::spatialInterpName(
         static_cast<DatasetClient::SpatialInterp>(siMap.value(m_spatialInterp->currentText(), 4)),
         method);
@@ -1397,9 +1340,8 @@ void DatasetPanel::onViewRequest()
         m_temporalInterp->currentText() == "PCHIP" ? DatasetClient::TemporalInterp::PCHIP
                                                    : DatasetClient::TemporalInterp::None);
 
-    // Collect points
     QVector<double> pts = parsePointLines(m_pointsEdit->toPlainText());
-    if (pts.isEmpty()) pts << 0.5 << 0.5 << 0.5;  // placeholder if none entered
+    if (pts.isEmpty()) pts << 0.5 << 0.5 << 0.5;
 
     QString ns = endpoint.endsWith(".asmx", Qt::CaseInsensitive)
                  ? DatasetClient::soapNamespace(endpoint)
@@ -1407,7 +1349,6 @@ void DatasetPanel::onViewRequest()
     QString soapXml = buildSoapXml(method, token, dataset, t, pts, si, ti, ns);
     QString soapAction = QString("\"%1%2\"").arg(ns, method);
 
-    // curl script
     QString curlScript = QString(
         "# Save the SOAP body to request.xml first, then:\n\n"
         "curl -X POST \\\n"
@@ -1423,7 +1364,6 @@ void DatasetPanel::onViewRequest()
         "  -d '%3'")
         .arg(endpoint, soapAction, soapXml);
 
-    // Python requests script
     QString pyScript = QString(
         "\"\"\"\n"
         "Raw HTTP query script: CakeCFD Studio export.\n"
@@ -1505,7 +1445,6 @@ void DatasetPanel::onViewRequest()
         "# for point_result in data[\"results\"]:\n"
         "#     print(point_result[\"vx\"], point_result[\"vy\"], point_result[\"vz\"])\n";
 
-    // dialog
     auto* dlg = new QDialog(this);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
     dlg->setWindowTitle("Query Request Script: " + field + " / " + dataset);
@@ -1537,7 +1476,6 @@ void DatasetPanel::onViewRequest()
     hint->setWordWrap(true);
     vl->addWidget(hint);
 
-    // Button row with Save (pick location), Save Globally (to ~/.config/CakeCFD/scripts/) and Close
     auto* btnRow    = new QHBoxLayout;
     auto* btnSave   = new QPushButton("Save", dlg);
     btnSave->setToolTip("Save the current tab's script to a location you choose");
@@ -1587,8 +1525,6 @@ void DatasetPanel::onViewRequest()
     dlg->show();
 }
 
-// Python code generation
-
 QString DatasetPanel::generatePythonCode() const
 {
     static const QMap<QString,QString> soapMethod = {
@@ -1606,7 +1542,6 @@ QString DatasetPanel::generatePythonCode() const
     QString ns   = useSoap ? CFD::DatasetClient::soapNamespace(q.endpoint)
                            : q.endpoint + "/";
     QString method = soapMethod.value(q.field, "GetVelocity");
-    // Same element names / enum strings DatasetClient sends
     const QString siName = CFD::DatasetClient::spatialInterpName(
         static_cast<CFD::DatasetClient::SpatialInterp>(q.spatialInterp), method);
     const QString tiName = CFD::DatasetClient::temporalInterpName(

@@ -47,9 +47,7 @@ public:
     static QList<Theme> all() { return { Theme::Graphite, Theme::Light, Theme::Navy }; }
     static QString key(Theme theme);
     static QString displayName(Theme theme);
-    // Unknown and older keys ("dark", "blueprint") fall back to Graphite
     static Theme fromKey(const QString& key);
-    // Tags a widget for a [cakeRole] rule in the theme stylesheet and restyles it now
     static void setRole(QWidget* w, const QString& role) {
         w->setProperty("cakeRole", role);
         w->style()->unpolish(w);

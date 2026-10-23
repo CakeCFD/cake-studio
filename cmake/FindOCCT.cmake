@@ -1,5 +1,4 @@
 ﻿set(OCCT_INC_HINT /usr/include/opencascade)
-set(OCCT_LIB_HINT /usr/lib/x86_64-linux-gnu)
 
 find_path(OCCT_INCLUDE_DIR TopoDS_Shape.hxx HINTS ${OCCT_INC_HINT})
 
@@ -15,7 +14,7 @@ set(_OCCT_LIBS
     TKXCAF TKRWMesh TKSTL TKVRML)
 
 foreach(_lib ${_OCCT_LIBS})
-    find_library(OCCT_${_lib}_LIB ${_lib} HINTS ${OCCT_LIB_HINT})
+    find_library(OCCT_${_lib}_LIB ${_lib})
     if(OCCT_${_lib}_LIB)
         list(APPEND OCCT_LIBRARIES ${OCCT_${_lib}_LIB})
     endif()

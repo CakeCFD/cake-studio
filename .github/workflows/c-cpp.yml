@@ -8,13 +8,16 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ ubuntu-24.04, ubuntu-24.04-arm ]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          # OpenFOAM v2412 (ESI) from the official openfoam.com apt repository
           curl -fsSL https://dl.openfoam.com/add-debian-repo.sh | sudo bash
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \

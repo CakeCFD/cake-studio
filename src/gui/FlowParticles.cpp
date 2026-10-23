@@ -33,11 +33,11 @@
 #include <vtkProperty.h>
 
 namespace {
-constexpr int    kTail        = 10;     // samples per comet tail
+constexpr int    kTail        = 10;
 constexpr size_t kMaxParts    = 6000;
-constexpr double kLapSeconds  = 5.0;    // wall time for a median line at speed 1
-constexpr double kPerLap      = 8.0;    // particles spaced along a median line
-constexpr double kTailFrac    = 0.08;   // tail length as a fraction of a median lap
+constexpr double kLapSeconds  = 5.0;
+constexpr double kPerLap      = 8.0;
+constexpr double kTailFrac    = 0.08;
 }
 
 FlowParticles::FlowParticles()
@@ -105,7 +105,6 @@ bool FlowParticles::setPaths(vtkPolyData* paths, const char* velName, vtkLookupT
             if (itime) {
                 t = itime->GetTuple1(ids[i]);
             } else if (i > 0) {
-                // Without tracer time, step by arc length over local speed
                 double ds = std::sqrt((p[0]-prev[0])*(p[0]-prev[0]) + (p[1]-prev[1])*(p[1]-prev[1])
                                       + (p[2]-prev[2])*(p[2]-prev[2]));
                 t += ds / std::max(speed, 1e-6);
@@ -132,7 +131,6 @@ bool FlowParticles::setPaths(vtkPolyData* paths, const char* velName, vtkLookupT
     m_rate = median / kLapSeconds;
     m_tail = median * kTailFrac;
 
-    // Spread particles evenly in time so long wake loops get more of them
     double spacing = median / kPerLap;
     size_t total = 0;
     for (const auto& l : m_lines) total += std::max<size_t>(1, size_t(l.duration / spacing));
@@ -204,7 +202,6 @@ void FlowParticles::writeFrame()
             double t = std::max(t0, head - m_tail * s / (kTail - 1));
             size_t k = p * kTail + s;
             sample(l, t, xyz + 3*k, rgba + 4*k);
-            // Head brightened towards white, tail fades out
             double f = 1.0 - double(s) / (kTail - 1);
             if (s == 0)
                 for (int c = 0; c < 3; ++c) rgba[4*k + c] = (unsigned char)(rgba[4*k + c] + (255 - rgba[4*k + c]) * 0.35);

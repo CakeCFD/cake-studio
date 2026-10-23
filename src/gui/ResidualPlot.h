@@ -50,7 +50,7 @@ private:
     QMap<QString, Series> m_series;
     int    m_maxIter     = 0;
     Theme  m_theme       = Theme::Graphite;
-    QTimer m_coalesce;   // batches rapid addResidual() calls into one repaint
+    QTimer m_coalesce;
 
     static const QColor SERIES_COLORS[];
     QColor colorForField(const QString& field);

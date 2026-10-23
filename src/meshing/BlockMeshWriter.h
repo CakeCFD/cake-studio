@@ -24,8 +24,8 @@
 namespace CFD {
 
 struct BlockMeshParams {
-    std::array<double,6> bounds; // xmin xmax ymin ymax zmin zmax (from geo bbox)
-    double padding = 0.5;        // fraction of bbox extent to add on each side
+    std::array<double,6> bounds;
+    double padding = 0.5;
     int cellsX = 40, cellsY = 40, cellsZ = 40;
 };
 
@@ -37,4 +37,4 @@ public:
                                          int cells = 40);
 };
 
-} // namespace CFD
+}

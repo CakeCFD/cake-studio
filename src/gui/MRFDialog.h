@@ -36,8 +36,8 @@ struct MRFZone {
     double  axisY         = 0.0;
     double  axisZ         = 1.0;
     double  rpm           = 1000.0;
-    QString nonRotPatches;   // space-separated patch names
-    QString active        = "true";   // kept verbatim from the file (true/false/yes/no/on/off)
+    QString nonRotPatches;
+    QString active        = "true";
 };
 
 class MRFDialog : public QDialog {

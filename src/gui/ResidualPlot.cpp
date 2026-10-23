@@ -46,8 +46,6 @@ void ResidualPlot::addResidual(const Residual& r) {
     if (!m_series.contains(r.field))
         m_series[r.field] = {QVector<double>{}, colorForField(r.field)};
 
-    // values[i] is iteration i+1, matching the x mapping in drawAxes/drawSeries.
-    // Residuals printed before the first Time line count as iteration 1.
     const int iter = std::max(1, r.iteration);
     Series& s = m_series[r.field];
     while (s.values.size() < iter)
@@ -72,13 +70,11 @@ QColor ResidualPlot::colorForField(const QString&) {
     return SERIES_COLORS[m_colorIdx++ % N];
 }
 
-// Pastel series colours suit dark plots; darken them on light ones
 static QColor onTheme(const QColor& c, Theme t) {
     return ThemeEngine::colorsFor(t).light ? c.darker(165) : c;
 }
 
 void ResidualPlot::paintEvent(QPaintEvent*) {
-    // Theme-aware palette
     const ThemeColors c = ThemeEngine::colorsFor(m_theme);
     const QColor bgColor      = c.plotBg;
     const QColor gridColor    = c.plotGrid;
@@ -178,7 +174,7 @@ void ResidualPlot::drawAxes(QPainter& p, const QRectF& plot,
 void ResidualPlot::drawSeries(QPainter& p, const QRectF& plot,
                                 double yMin, double yMax) const
 {
-    const bool sparse = (m_maxIter <= 30);  // show dots when data is sparse (e.g. pimpleFoam)
+    const bool sparse = (m_maxIter <= 30);
     for (auto it = m_series.cbegin(); it != m_series.cend(); ++it) {
         const Series& s = it.value();
         if (s.values.isEmpty()) continue;
@@ -217,7 +213,6 @@ void ResidualPlot::drawLegend(QPainter& p, const QRectF& plot) const
     const int lineH  = fm.height() + 4;
     const int swatchW = 16, swatchH = 3, pad = 8;
 
-    // Measure widest entry to size the background box
     int maxW = 0;
     for (auto it = m_series.cbegin(); it != m_series.cend(); ++it) {
         double last = 0;
@@ -233,7 +228,6 @@ void ResidualPlot::drawLegend(QPainter& p, const QRectF& plot) const
     int boxW = swatchW + 6 + maxW + pad * 2;
     int boxH = n * lineH + pad;
 
-    // Top-right inside the plot
     double bx = plot.right() - boxW - 6;
     double by = plot.top() + 6;
 
@@ -253,10 +247,8 @@ void ResidualPlot::drawLegend(QPainter& p, const QRectF& plot) const
                 { last = s.values[i]; break; }
         }
 
-        // Color swatch
         p.fillRect(QRectF(bx + pad, ly + (lineH - swatchH) / 2.0, swatchW, swatchH), onTheme(s.color, m_theme));
 
-        // Label
         QString txt = QString("%1  %2").arg(it.key()).arg(last, 0, 'e', 2);
         p.setPen(onTheme(s.color, m_theme));
         p.drawText(QPointF(bx + pad + swatchW + 6, ly + fm.ascent()), txt);

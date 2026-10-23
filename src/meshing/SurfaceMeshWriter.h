@@ -28,11 +28,9 @@ namespace CFD {
 
 class SurfaceMeshWriter {
 public:
-    // Write geometry as ASCII STL into <caseDir>/constant/triSurface/<name>.stl
-    // Returns the path written, or empty string on failure.
     static QString write(const CADGeometry& geo,
                          const QString& caseDir,
                          const QString& surfaceName);
 };
 
-} // namespace CFD
+}

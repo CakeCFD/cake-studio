@@ -26,21 +26,13 @@
 namespace Foam
 {
 
-// Per-face stencil data for TENO schemes.
-// Provides three directional sub-stencils (owner-biased, central, neighbour-biased)
-// and a wide central stencil for high-order reconstruction.
-// TENO5 uses stencil0/stencil1/stencilK (3 candidates).
-// TENO6 additionally uses stencil2 for a 4th candidate.
 struct FaceStencilData
 {
-    labelList stencilK;   // wide central stencil  (owner ∪ neighbour 1-ring)
-    labelList stencil0;   // owner-side sub-stencil (owner 1-ring)
-    labelList stencil1;   // neighbour-side sub-stencil (neighbour 1-ring)
-    labelList stencil2;   // owner 2nd-ring sub-stencil (for TENO6 4th candidate)
+    labelList stencilK;
+    labelList stencil0;
+    labelList stencil1;
+    labelList stencil2;
 
-    // Pre-computed least-squares pseudo-inverse (4 x n) row-major
-    //   u_face = sum_j lsq[0*n+j]*u[j]
-    //   du/dx  = sum_j lsq[1*n+j]*u[j]   (evaluated at faceCentre)
     scalarField lsqK;
     scalarField lsq0;
     scalarField lsq1;
@@ -77,4 +69,4 @@ public:
     virtual void updateMesh(const mapPolyMesh&) { buildStencils(this->mesh()); }
 };
 
-} // namespace Foam
+}

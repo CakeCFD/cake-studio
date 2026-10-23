@@ -51,15 +51,13 @@ private:
     void buildPhysicsTab(QTabWidget*);
     void buildBottomBar();
     void log(const QString& msg);
-    bool runCommand(const QString& cmd); // runs cmd via bash -c; true on exit code 0
-    static QString shellPrefix(const QString& caseDir); // source OF bashrc + cd caseDir
+    bool runCommand(const QString& cmd);
+    static QString shellPrefix(const QString& caseDir);
     void setRunning(bool);
 
-    // Geometry tab
     QLineEdit*   m_geoPath    = nullptr;
     QLabel*      m_geoStats   = nullptr;
 
-    // Mesh tab
     QDoubleSpinBox* m_padding         = nullptr;
     QSpinBox*       m_bgCells         = nullptr;
     QSpinBox*       m_maxGlobal       = nullptr;
@@ -72,7 +70,6 @@ private:
     QDoubleSpinBox* m_firstLayerThick = nullptr;
     QDoubleSpinBox* m_minThickness    = nullptr;
 
-    // Physics tab
     QComboBox*      m_solver      = nullptr;
     QComboBox*      m_turbulence  = nullptr;
     QDoubleSpinBox* m_velocity    = nullptr;
@@ -81,14 +78,12 @@ private:
     QLineEdit*      m_outputDir   = nullptr;
     QSpinBox*       m_cores       = nullptr;
 
-    // Bottom
     QPushButton* m_btnGenerate   = nullptr;
     QPushButton* m_btnRunMesh    = nullptr;
     QPushButton* m_btnRunSolver  = nullptr;
     QLabel*      m_status        = nullptr;
     QTextEdit*   m_log           = nullptr;
 
-    // State
     std::shared_ptr<CFD::CADGeometry> m_geo;
     QString m_caseDir;
 };

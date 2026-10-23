@@ -8,8 +8,6 @@ if [[ ! -x "$APP" ]]; then
     exit 1
 fi
 
-# Only pin the driver on WSL, where /dev/dxg exposes the host GPU, and only when
-# the user has not chosen a driver themselves.
 if [[ -e /dev/dxg && -z "${GALLIUM_DRIVER:-}" ]]; then
     export GALLIUM_DRIVER=d3d12
 fi

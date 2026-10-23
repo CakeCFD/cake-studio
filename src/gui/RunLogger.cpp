@@ -32,18 +32,13 @@
 #include <QRegularExpression>
 #include <algorithm>
 
-// Public API
-
 QString RunLogger::startRun(const QString& caseDir, const QString& solver)
 {
-    // Clear stale time directories from previous runs so finishRun() snapshots
-    // only this run's output.
     static const QRegularExpression reNum(R"(^\d+\.?\d*$)");
     for (const QFileInfo& fi : QDir(caseDir).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         if (reNum.match(fi.fileName()).hasMatch() && fi.fileName() != "0")
             QDir(fi.filePath()).removeRecursively();
     }
-    // Clear postProcessing so force.dat never mixes runs
     QDir(caseDir + "/postProcessing").removeRecursively();
 
     int idx = nextIndex(caseDir);
@@ -59,13 +54,11 @@ QString RunLogger::startRun(const QString& caseDir, const QString& solver)
     meta["converged"] = false;
     meta["n_steps"]   = 0;
 
-    // Physics snapshot tries both OF naming conventions
     QString mtPath = caseDir + "/constant/turbulenceProperties";
     if (!QFile::exists(mtPath))
         mtPath = caseDir + "/constant/momentumTransport";
     QString simType = readDictValue(mtPath, "simulationType");
     meta["sim_type"] = simType;
-    // nu comes from transportProperties (incompressible), thermophysicalProperties (compressible) or physicalProperties (OF10+)
     QString nu = readDictValue(caseDir + "/constant/transportProperties", "nu");
     if (nu.isEmpty()) nu = readDictValue(caseDir + "/constant/physicalProperties", "nu");
     if (nu.isEmpty()) nu = readDictValue(caseDir + "/constant/thermophysicalProperties", "mu");
@@ -97,7 +90,6 @@ QString RunLogger::startRun(const QString& caseDir, const QString& solver)
         if (m.hasMatch()) meta["inlet_U"] = "(" + m.captured(1) + ")";
     }
 
-    // Div scheme read from fvSchemes
     meta["div_scheme"] = readDivScheme(caseDir + "/system/fvSchemes");
 
     QFile mf(runDir + "/metadata.json");
@@ -119,8 +111,6 @@ void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool co
             meta = QJsonDocument::fromJson(mf.readAll()).object();
     }
 
-    // Copy the solver log. The solver recorded for this run wins over whatever
-    // other log.* files are lying around from earlier runs.
     QString solver = detectSolver(caseDir, meta["solver"].toString());
     if (!solver.isEmpty()) {
         QString src = caseDir + "/log." + solver;
@@ -128,11 +118,9 @@ void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool co
         if (QFile::exists(src)) { QFile::remove(dst); QFile::copy(src, dst); }
     }
 
-    // Parse results
     auto residuals = parseResiduals(caseDir + "/log." + solver);
     auto forces    = parseForces(caseDir);
 
-    // Residuals CSV
     if (!residuals.isEmpty()) {
         QFile rf(runDir + "/results/residuals.csv");
         if (rf.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -152,7 +140,6 @@ void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool co
         }
     }
 
-    // Forces CSV
     if (!forces.isEmpty()) {
         QFile ff(runDir + "/results/forces.csv");
         if (ff.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -164,7 +151,6 @@ void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool co
         }
     }
 
-    // Update metadata.json
     meta["converged"]  = converged;
     meta["stopped"]    = stopped;
     meta["n_steps"]    = residuals.size();
@@ -195,9 +181,6 @@ void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool co
             mf.write(QJsonDocument(meta).toJson());
     }
 
-    // Snapshot the final time step into run_XXX/results/flow/ so each run has
-    // independent flow data. Multiple runs in the same case dir otherwise overwrite
-    // each other's time directories.
     {
         static const QRegularExpression reNum(R"(^\d+\.?\d*$)");
         QStringList timeSteps;
@@ -211,15 +194,10 @@ void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool co
         QString flowDir = runDir + "/results/flow";
         QDir().mkpath(flowDir);
 
-        // Empty case.foam marker required by vtkOpenFOAMReader
         { QFile f(flowDir + "/case.foam"); f.open(QIODevice::WriteOnly); }
 
-        // Copy constant/polyMesh as real files.
-        // Symlinks can cause silent vtkOpenFOAMReader failures on some VTK/WSL
-        // builds. Each run snapshot is self-contained (Blender-style).
         copyDir(caseDir + "/constant/polyMesh", flowDir + "/constant/polyMesh");
 
-        // Copy small constant text files needed by the reader
         QDir().mkpath(flowDir + "/constant");
         for (const QString& cf : {"transportProperties", "momentumTransport",
                                    "turbulenceProperties", "thermophysicalProperties",
@@ -229,12 +207,10 @@ void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool co
                 QFile::copy(src, flowDir + "/constant/" + cf);
         }
 
-        // Minimal system dir, controlDict is all vtkOpenFOAMReader needs
         QDir().mkpath(flowDir + "/system");
         QFile::copy(caseDir + "/system/controlDict",
                     flowDir + "/system/controlDict");
 
-        // Copy only the final time step, which is all vtkOpenFOAMReader needs
         QStringList snapshotSteps;
         if (!timeSteps.isEmpty()) {
             QString lastTs = timeSteps.last();
@@ -243,7 +219,7 @@ void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool co
         }
 
         QJsonObject cfg;
-        cfg["case_dir"]          = flowDir;   // the snapshot dir
+        cfg["case_dir"]          = flowDir;
         cfg["original_case_dir"] = caseDir;
         cfg["div_scheme"]        = meta["div_scheme"].toString();
         cfg["solver"]            = meta["solver"].toString();
@@ -255,7 +231,6 @@ void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool co
             cf.write(QJsonDocument(cfg).toJson());
     }
 
-    // Auto-generate per-run report
     RunInfo info = readRunInfo(runDir);
     generateReport(info, runDir + "/run_report.md");
 }
@@ -263,7 +238,6 @@ void RunLogger::finishRun(const QString& runDir, const QString& caseDir, bool co
 QList<RunInfo> RunLogger::listRuns(const QString& caseDir)
 {
     QList<RunInfo> result;
-    // Check new location first, then legacy location for backward compat
     for (const QString& runsPath : {caseDir + "/results/runs", caseDir + "/runs"}) {
         QDir runsDir(runsPath);
         if (!runsDir.exists()) continue;
@@ -271,9 +245,8 @@ QList<RunInfo> RunLogger::listRuns(const QString& caseDir)
             RunInfo info = readRunInfo(fi.filePath());
             if (info.index > 0) result.append(info);
         }
-        if (!result.isEmpty()) break;  // found runs in this location, don't double-count
+        if (!result.isEmpty()) break;
     }
-    // Numeric order, since by name run_1000 would land between run_100 and run_101
     std::sort(result.begin(), result.end(),
               [](const RunInfo& a, const RunInfo& b) { return a.index < b.index; });
     return result;
@@ -304,7 +277,6 @@ RunInfo RunLogger::readRunInfo(const QString& runDir)
     info.nSteps     = meta["n_steps"].toInt();
     info.finalTime  = meta["final_time"].toDouble();
 
-    // Prefer the explicit flow config file, then the reconstructed case path
     QFile cf(runDir + "/flow_config.json");
     if (cf.open(QIODevice::ReadOnly)) {
         QJsonObject cfg = QJsonDocument::fromJson(cf.readAll()).object();
@@ -314,7 +286,6 @@ RunInfo RunLogger::readRunInfo(const QString& runDir)
         if (info.divScheme.isEmpty())
             info.divScheme = cfg["div_scheme"].toString();
     } else {
-        // Old runs without flow_config.json reconstruct the case dir from the path
         QString reconstructed = caseDirForRun(runDir);
         if (QDir(reconstructed).exists()) {
             info.flowDir = reconstructed;
@@ -350,7 +321,6 @@ bool RunLogger::generateReport(const RunInfo& info, const QString& outputPath)
     QTextStream o(&f);
     o.setCodec(QTextCodec::codecForName("UTF-8"));
 
-    // header
     o << "# Cake Studio - Simulation Report\n\n";
     o << "| | |\n|---|---|\n";
     o << "| **Run** | " << info.index << " |\n";
@@ -359,7 +329,6 @@ bool RunLogger::generateReport(const RunInfo& info, const QString& outputPath)
     o << "| **Date** | " << info.timestamp << " |\n";
     o << "| **Solver** | " << (info.solver.isEmpty() ? "(not detected)" : info.solver) << " |\n\n";
 
-    // inputs
     QString st = info.simType.isEmpty() ? "laminar" : info.simType;
     QString tm = info.turbModel.isEmpty() ? "(not specified)" : info.turbModel;
     o << "## Simulation Inputs\n\n";
@@ -380,7 +349,6 @@ bool RunLogger::generateReport(const RunInfo& info, const QString& outputPath)
     if (!info.nCores.isEmpty())  o << "| CPU cores | " << info.nCores << " |\n";
     o << "\n";
 
-    // mesh stats
     QMap<QString,QString> meshStats;
     for (const QString& name : {"log.checkMesh", "checkMesh.log"}) {
         QFile mf(caseDir + "/" + name);
@@ -412,7 +380,6 @@ bool RunLogger::generateReport(const RunInfo& info, const QString& outputPath)
         o << "| checkMesh | " << (meshStats.value("ok") == "true" ? "OK" : "FAILED") << " |\n\n";
     }
 
-    // convergence
     o << "## Convergence\n\n";
     if (info.finalResiduals.isEmpty()) {
         o << "_No residual data._\n\n";
@@ -428,20 +395,17 @@ bool RunLogger::generateReport(const RunInfo& info, const QString& outputPath)
         o << "\n";
     }
 
-    // forces
     if (info.hasForces) {
         o << "## Aerodynamic Forces (final timestep)\n\n";
         o << "| Component | Fx [N] | Fy [N] | Fz [N] |\n|---|---|---|---|\n";
         o << "| Force | " << info.latestFx << " | " << info.latestFy << " | " << info.latestFz << " |\n\n";
-        o << "> Cd = Fx / (0.5 * rho * |U|^2 * A_ref)  -- supply rho and A_ref to compute.\n\n";
+        o << "> Cd = (F . U/|U|) / (0.5 * rho * |U|^2 * A_ref)  -- supply rho and A_ref to compute.\n\n";
     }
 
-    // citations
     o << "## References\n\n";
 
     CitationManager& cm = CitationManager::instance();
 
-    // Ordered as OpenFOAM → TENO5 → turbulence model → dataset citations
     QStringList citeKeys;
     auto addKey = [&](const QString& k) {
         if (!k.isEmpty() && !citeKeys.contains(k)) citeKeys << k;
@@ -462,8 +426,6 @@ bool RunLogger::generateReport(const RunInfo& info, const QString& outputPath)
     o << "\n---\n*Generated by Cake Studio*\n";
     return true;
 }
-
-// Private helpers
 
 int RunLogger::nextIndex(const QString& caseDir)
 {
@@ -494,14 +456,12 @@ void RunLogger::copyInputs(const QString& caseDir, const QString& inputsDir)
         if (QFile::exists(src))
             QFile::copy(src, inputsDir + "/" + QFileInfo(rel).fileName());
     }
-    // Inlet BC
     if (QFile::exists(caseDir + "/0/U"))
         QFile::copy(caseDir + "/0/U", inputsDir + "/U");
 }
 
 QString RunLogger::caseDirForRun(const QString& runDir)
 {
-    // runDir is <case>/results/runs/run_XXX, or <case>/runs/run_XXX for legacy runs
     QDir d = QFileInfo(runDir).dir();
     if (d.dirName() == "runs") {
         d.cdUp();
@@ -516,28 +476,19 @@ QString RunLogger::detectSolver(const QString& caseDir, const QString& preferred
     if (!preferred.isEmpty() && QFile::exists(caseDir + "/log." + preferred))
         return preferred;
 
-    // Several solver logs can coexist after switching solvers, the newest wins
     static const QStringList knownSolvers = {
-        // Incompressible steady/transient
         "simpleFoam", "pimpleFoam", "pisoFoam", "icoFoam",
         "SRFSimpleFoam", "SRFPimpleFoam", "nonNewtonianIcoFoam",
         "boundaryFoam", "shallowWaterFoam",
-        // Compressible
         "rhoSimpleFoam", "rhoPimpleFoam", "rhoCentralFoam",
         "sonicFoam", "transonicFoam", "rhoFoam",
-        // Buoyancy / heat transfer
         "buoyantSimpleFoam", "buoyantPimpleFoam",
         "buoyantBoussinesqSimpleFoam", "buoyantBoussinesqPimpleFoam",
-        // Multiphase
         "interFoam", "interIsoFoam", "interMixingFoam",
         "multiphaseInterFoam", "twoPhaseEulerFoam", "reactingMultiphaseEulerFoam",
-        // Combustion / reacting
         "reactingFoam", "fireFoam", "XiFoam",
-        // Lagrangian / particle
         "coalChemistryFoam", "sprayFoam",
-        // Potential / Laplacian
         "potentialFoam", "laplacianFoam",
-        // Electromagnetics
         "magneticFoam",
     };
     QString best;
@@ -550,7 +501,6 @@ QString RunLogger::detectSolver(const QString& caseDir, const QString& preferred
         }
     }
     if (!best.isEmpty()) return best;
-    // Otherwise pick the newest log.* file
     for (const QFileInfo& fi : QDir(caseDir).entryInfoList({"log.*"}, QDir::Files, QDir::Time)) {
         int dot = fi.fileName().indexOf('.');
         if (dot >= 0) return fi.fileName().mid(dot + 1);
@@ -573,7 +523,6 @@ QString RunLogger::readDivScheme(const QString& fvSchemesPath)
     QFile f(fvSchemesPath);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
     QString txt = f.readAll();
-    // Capture the div(phi,U) line up to the semicolon
     QRegularExpression re(R"(div\(\s*phi\s*,\s*[Uu]\s*\)\s+([^;]+);)");
     auto m = re.match(txt);
     if (!m.hasMatch()) return {};
@@ -583,7 +532,7 @@ QString RunLogger::readDivScheme(const QString& fvSchemesPath)
     if (entry.contains("linearupwind")) return "linearUpwind";
     if (entry.contains("linear"))      return "linear";
     if (entry.contains("upwind"))      return "upwind";
-    return entry.section(' ', -1);  // last token as fallback
+    return entry.section(' ', -1);
 }
 
 QList<RunLogger::ResidualRow> RunLogger::parseResiduals(const QString& logPath)
@@ -622,7 +571,6 @@ QList<RunLogger::ResidualRow> RunLogger::parseResiduals(const QString& logPath)
     return rows;
 }
 
-// OF 2412 force.dat/moment.dat columns are col[0]=time, col[1-3]=total, col[4-6]=pressure, col[7-9]=viscous
 static QStringList splitForceLine(const QString& raw)
 {
     QString clean = raw;
@@ -661,7 +609,6 @@ QList<RunLogger::ForceRow> RunLogger::parseForces(const QString& caseDir)
             if (p.size() < 4) continue;
             bool ok; ForceRow r;
             r.time = p[0].toDouble(&ok); if (!ok) continue;
-            // col[1-3] = total force
             r.fx = p[1].toDouble(); r.fy = p[2].toDouble(); r.fz = p[3].toDouble();
             byTime[r.time] = r;
         }
@@ -678,7 +625,6 @@ QList<RunLogger::ForceRow> RunLogger::parseForces(const QString& caseDir)
                 if (p.size() < 4) continue;
                 bool ok; double t = p[0].toDouble(&ok); if (!ok) continue;
                 if (!byTime.contains(t)) continue;
-                // col[1-3] = total moment
                 byTime[t].mx = p[1].toDouble(); byTime[t].my = p[2].toDouble(); byTime[t].mz = p[3].toDouble();
             }
         }

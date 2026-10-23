@@ -38,19 +38,17 @@
 #include <QHBoxLayout>
 #include <memory>
 
-// theme-aware color palette
-
 struct TC {
-    QString accent;   // section headers, badges, buttons
-    QString label;    // row label text
-    QString value;    // row value text
-    QString muted;    // hint text, separator
-    QString sep;      // horizontal rule color
-    QString btnFg;    // button foreground
-    QString btnHover; // button hover background
-    QString editBg;   // editable field focused background
-    QString ok;       // success badge
-    QString err;      // error badge
+    QString accent;
+    QString label;
+    QString value;
+    QString muted;
+    QString sep;
+    QString btnFg;
+    QString btnHover;
+    QString editBg;
+    QString ok;
+    QString err;
 };
 
 static TC tc() {
@@ -59,8 +57,6 @@ static TC tc() {
              c.border.name(), c.onAccent.name(), c.accentHover.name(),
              c.base.name(), c.success.name(), c.danger.name() };
 }
-
-// file helpers
 
 static QString slurp(const QString& path)
 {
@@ -97,7 +93,6 @@ static QString fmtSize(qint64 bytes)
     return QString::number(bytes / 1024 / 1024) + " MB";
 }
 
-// Write a key-value pair back into an OpenFOAM dict file using regex replacement.
 static bool writeKey(const QString& filePath, const QString& key, const QString& value)
 {
     QFile f(filePath);
@@ -109,7 +104,6 @@ static bool writeKey(const QString& filePath, const QString& key, const QString&
     auto m = re.match(text);
     if (!m.hasMatch()) return false;
 
-    // Replace only the first occurrence to avoid clobbering repeated keys in sub-dicts
     text = text.left(m.capturedStart()) + key + "  " + value + ";" + text.mid(m.capturedEnd());
 
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
@@ -117,7 +111,6 @@ static bool writeKey(const QString& filePath, const QString& key, const QString&
     return true;
 }
 
-// Rewrites both turbulence dicts so simulationType always matches the chosen model
 static void writeTurbulenceDicts(const QString& caseDir, const QString& model)
 {
     static const QStringList les = {"kOmegaSSTDES","Smagorinsky","WALE","dynamicKEqn","dynamicLagrangian"};
@@ -140,8 +133,6 @@ static void writeTurbulenceDicts(const QString& caseDir, const QString& model)
     }
 }
 
-// PropertiesPanel
-
 PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent)
 {
     auto* outer = new QVBoxLayout(this);
@@ -162,7 +153,7 @@ void PropertiesPanel::initContainer()
     m_vlay = new QVBoxLayout(w);
     m_vlay->setContentsMargins(10, 8, 10, 8);
     m_vlay->setSpacing(0);
-    m_vlay->addStretch(1);  // trailing stretch, addSection inserts before this
+    m_vlay->addStretch(1);
 
     m_scroll->setWidget(w);
     m_content = w;
@@ -227,10 +218,8 @@ void PropertiesPanel::buildBlankUI()
         phLayout->addWidget(row);
     }
 
-    // Centre the placeholder vertically between the two stretches initContainer added
     m_vlay->insertStretch(0, 1);
     m_vlay->insertWidget(1, ph);
-    // trailing stretch is already at index 2
 }
 
 void PropertiesPanel::clear()
@@ -327,7 +316,6 @@ void PropertiesPanel::addEditableRow(const QString& label, const QString& value,
     connect(edit, &QLineEdit::editingFinished, edit, [edit, fn, normalSS, accent=t.accent, editBg=t.editBg]() {
         if (!*fn) return;
         (*fn)(edit->text());
-        // Brief accent flash to confirm write
         edit->setStyleSheet(QString(
             "QLineEdit { background: %1; border: 1px solid %2; "
             "border-radius: 2px; color: %2; font-size: 11px; padding: 1px 4px; }")
@@ -353,7 +341,6 @@ void PropertiesPanel::addComboRow(const QString& label, const QStringList& optio
 
     auto* combo = new QComboBox(m_content);
     combo->addItems(options);
-    // A value outside the list is added so the row never shows the first option by mistake
     if (!current.isEmpty() && current != "-" && !options.contains(current))
         combo->addItem(current);
     int idx = combo->findText(current);
@@ -374,8 +361,6 @@ void PropertiesPanel::addComboRow(const QString& label, const QStringList& optio
 
     m_form->addRow(lbl, combo);
 }
-
-// public slot
 
 void PropertiesPanel::showItem(int itemType, const QString& path, const QString& caseDir)
 {
@@ -399,8 +384,6 @@ void PropertiesPanel::showItem(int itemType, const QString& path, const QString&
     }
 }
 
-// populators
-
 void PropertiesPanel::populateCase(const QString& caseDir)
 {
     QString cdPath = caseDir + "/system/controlDict";
@@ -417,7 +400,6 @@ void PropertiesPanel::populateCase(const QString& caseDir)
     addEditableRow("Δt",             dictVal(cd, "deltaT"),      [cdPath](const QString& v){ writeKey(cdPath, "deltaT", v); });
     addEditableRow("Write interval", dictVal(cd, "writeInterval"),[cdPath](const QString& v){ writeKey(cdPath, "writeInterval", v); });
 
-    // Count result time steps
     static QRegularExpression numRe(R"(^\d+(\.\d+)?$)");
     QStringList steps;
     for (const QString& e : QDir(caseDir).entryList(QDir::Dirs | QDir::NoDotAndDotDot))
@@ -427,7 +409,6 @@ void PropertiesPanel::populateCase(const QString& caseDir)
     addRow("Time steps", steps.isEmpty() ? "none" : QString::number(steps.size()));
     if (!steps.isEmpty()) addRow("Latest", steps.last() + " s");
 
-    // Physics
     QString turbPath = caseDir + "/constant/turbulenceProperties";
     if (!QFile::exists(turbPath)) turbPath = caseDir + "/constant/momentumTransport";
     QString mtt = slurp(turbPath);
@@ -436,7 +417,6 @@ void PropertiesPanel::populateCase(const QString& caseDir)
         if (!QFile::exists(tpPath)) tpPath = caseDir + "/constant/physicalProperties";
         QString tp = slurp(tpPath);
 
-        // simulationType decides laminar, and LES dicts may name the model LESModel
         QString turb = dictVal(mtt, "simulationType") == "laminar" ? QString("laminar") : dictVal(mtt, "model");
         if (turb == "-") turb = dictVal(mtt, "LESModel");
         if (turb == "-") turb = dictVal(mtt, "RASModel");
@@ -547,7 +527,6 @@ void PropertiesPanel::populateGeo(const QString& path, const QString& caseDir)
             if (n > 0) addRow("Triangles", QString::number(n));
         }
 
-        // Always offer domain setup and workspace load for STL geometry
         if (!caseDir.isEmpty()) {
             QString stlPath = path;
             QString cd      = caseDir;
@@ -596,7 +575,6 @@ void PropertiesPanel::populateResult(const QString& caseDir, const QString& time
         addRow(field, dim.hasMatch() ? "non-uniform  " + dim.captured(1) : "non-uniform");
     }
 
-    // Final residuals
     QStringList logs;
     for (const QString& f : QDir(caseDir).entryList({"log.*"}, QDir::Files)) logs << f;
     if (!logs.isEmpty()) {
@@ -639,7 +617,6 @@ void PropertiesPanel::populateDict(const QString& path)
             auto m = it.next();
             QString key = "div(" + m.captured(1) + ")";
             QString val = m.captured(2).simplified();
-            // Inline edit writes back the whole div entry
             addEditableRow(key, val, [path, key, val](const QString& v){
                 QFile f(path);
                 if (!f.open(QIODevice::ReadOnly)) return;
@@ -703,7 +680,6 @@ void PropertiesPanel::populateDict(const QString& path)
         }
 
     } else {
-        // Generic fallback shows top-level key-value pairs as editable
         addSection("Contents");
         QRegularExpression kvRe(R"(^\s{0,4}(\w+)\s+([^\s{;][^;]*);)",
                                 QRegularExpression::MultilineOption);

@@ -107,7 +107,6 @@ void ThemeEngine::apply(Theme theme, QApplication& app) {
     app.setStyleSheet(stylesheet(c));
 }
 
-// @tokens in the template are replaced with the theme's colours
 QString ThemeEngine::stylesheet(const ThemeColors& c) {
     QString s = R"(
         QMainWindow, QWidget          { background-color: @window; color: @text; }
@@ -175,7 +174,6 @@ QString ThemeEngine::stylesheet(const ThemeColors& c) {
         QFrame[cakeRole="warnBanner"] QPushButton { background: transparent; color: @warning; border: 1px solid @warning; font-size: 10px; padding: 2px 8px; }
         QFrame[cakeRole="warnBanner"] QPushButton:hover { background: @warning; color: @onAccent; }
     )";
-    // Longest names first so @accentHover is not caught by @accent
     const QList<QPair<QString, QColor>> tokens = {
         {"@accentHover", c.accentHover}, {"@borderStrong", c.borderStrong}, {"@warningBg", c.warningBg},
         {"@textMuted", c.textMuted}, {"@selection", c.selection}, {"@onAccent", c.onAccent},

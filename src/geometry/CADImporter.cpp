@@ -57,13 +57,12 @@ CADImportResult CADImporter::load(const QString& filePath, CADFormat format)
     switch (format) {
     case CADFormat::STEP: res = loadSTEP(filePath); break;
     case CADFormat::IGES: res = loadIGES(filePath); break;
-    case CADFormat::BREP: res = loadBREP(filePath); break;  // no repair for BREP
+    case CADFormat::BREP: res = loadBREP(filePath); break;
     default: res.errorMsg = "Unknown format"; break;
     }
 
     if (res.success && res.shape) {
-        // Repair only STEP/IGES since BREP is already topologically valid
-        if (false) // repair disabled for now, too slow on dev hardware
+        if (false)
             repairShape(*res.shape);
         computeStats(res);
     }
@@ -124,8 +123,6 @@ CADImportResult CADImporter::loadBREP(const QString& path)
 
 void CADImporter::repairShape(TopoDS_Shape& shape)
 {
-    // Only called for STEP/IGES. Fixes gaps and bad tolerances from CAD translators
-    // with face and wire fixes only, no domain unification.
     ShapeFix_Shape fixer(shape);
     fixer.SetPrecision(1e-6);
     fixer.SetMaxTolerance(1e-3);
@@ -146,18 +143,16 @@ void CADImporter::computeStats(CADImportResult& res)
     for (TopExp_Explorer ex(s, TopAbs_EDGE);  ex.More(); ex.Next()) ++res.numEdges;
 
     std::cerr << "[IMPORT] explorers done solids=" << res.numSolids << "\n" << std::flush;
-    // Volume via GProp, only when the shape has solids (avoids crash on shell-only imports)
     if (res.numSolids > 0) {
         GProp_GProps vp;
             std::cerr << "[IMPORT] VolumeProperties start\n" << std::flush;
         BRepGProp::VolumeProperties(s, vp, true);
         std::cerr << "[IMPORT] VolumeProperties done\n" << std::flush;
-        std::cerr << "[IMPORT] VolumeProperties done\n" << std::flush; // useTriangulation=true is much faster
+        std::cerr << "[IMPORT] VolumeProperties done\n" << std::flush;
         res.volume = vp.Mass();
     }
 
     std::cerr << "[IMPORT] computeStats done\n" << std::flush;
-    // Surface area skipped for now because BRepGProp::SurfaceProperties is slow
 }
 
-} // namespace CFD
+}

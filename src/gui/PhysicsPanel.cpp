@@ -45,7 +45,6 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
     auto* root = new QVBoxLayout(this);
     root->setSpacing(10);
 
-    // Solver
     auto* solverGroup = new QGroupBox("Solver");
     auto* solverForm  = new QFormLayout(solverGroup);
 
@@ -71,7 +70,6 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
 
     root->addWidget(solverGroup);
 
-    // Turbulence
     auto* turbGroup = new QGroupBox("Turbulence");
     auto* turbForm  = new QFormLayout(turbGroup);
 
@@ -107,7 +105,6 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
     turbForm->addRow(m_turbBox);
     root->addWidget(turbGroup);
 
-    // Fluid
     auto* fluidGroup = new QGroupBox("Fluid Properties");
     auto* fluidForm  = new QFormLayout(fluidGroup);
 
@@ -129,7 +126,6 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
     fluidForm->addRow("rho (kg/m³):", m_rhoSpin);
     root->addWidget(fluidGroup);
 
-    // Numerical Schemes
     auto* schemesGroup = new QGroupBox("Numerical Schemes");
     auto* schemesForm  = new QFormLayout(schemesGroup);
 
@@ -148,7 +144,6 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
     schemesForm->addRow("", tenoNote);
     root->addWidget(schemesGroup);
 
-    // Inlet BC
     auto* inletGroup = new QGroupBox("Inlet Velocity");
     auto* inletForm  = new QFormLayout(inletGroup);
 
@@ -165,7 +160,6 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
     inletForm->addRow("Uz (m/s):", m_uzSpin);
     root->addWidget(inletGroup);
 
-    // Reynolds Number & Reference Quantities
     auto* reGroup  = new QGroupBox("Reynolds Number & Reference Quantities");
     auto* reLayout = new QFormLayout(reGroup);
 
@@ -187,7 +181,6 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
     reLayout->addRow("Re:", m_reLabel);
     root->addWidget(reGroup);
 
-    // Buttons
     auto* btnBox = new QDialogButtonBox;
     auto* applyBtn = btnBox->addButton("Apply to Case", QDialogButtonBox::AcceptRole);
     btnBox->addButton(QDialogButtonBox::Close);
@@ -195,7 +188,7 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
 
     connect(applyBtn,        &QPushButton::clicked, this, &PhysicsPanel::onApply);
     connect(btnBox,          &QDialogButtonBox::rejected, this, [this](){
-        onApply();   // always write settings to case on close
+        onApply();
         reject();
     });
     connect(m_solverCombo,   QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -216,18 +209,16 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
                 "For external aerodynamics, TENO + RANS (simpleFoam) gives the\n"
                 "accuracy benefit of high-order convection at a practical cost.");
         }
-        // Re-enable the LES option regardless, it only warns
         auto* model = qobject_cast<QStandardItemModel*>(m_simTypeCombo->model());
         if (model) {
             auto* lesItem = model->item(1);
             if (lesItem) lesItem->setEnabled(true);
         }
     });
-    // Also warn when the user switches TO LES while TENO is already selected
     connect(m_simTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int idx) {
         bool isTeno = (m_divSchemeCombo->currentData().toString() != "linearUpwind");
-        if (idx == 1 && isTeno) {   // idx 1 = LES
+        if (idx == 1 && isTeno) {
             QMessageBox::warning(this, "TENO + LES Warning",
                 "TENO5/TENO6 with LES is supported but extremely demanding:\n\n"
                 "  • CFL < 0.2  (deltaT ~1e-6 for flight-scale cases)\n"
@@ -261,7 +252,6 @@ void PhysicsPanel::onSolverChanged(int)
     bool isLESsolver = solver.contains("pimple", Qt::CaseInsensitive)
                     || solver.contains("Pimple");
     bool isThermal   = solver.startsWith("buoyant") || solver == "rhoSimpleFoam";
-    // Sync simType combo
     {
         QSignalBlocker b(m_simTypeCombo);
         m_simTypeCombo->setCurrentIndex(isLESsolver ? 1 : 0);
@@ -275,15 +265,14 @@ void PhysicsPanel::onSimTypeChanged(int idx)
 {
     bool les = (idx == 1);
 
-    // Sync solver combo to LES/RANS without re-entering onSolverChanged
     {
         QSignalBlocker b(m_solverCombo);
         QString cur = m_solverCombo->currentData().toString();
         bool curIsLES = cur.contains("pimple", Qt::CaseInsensitive);
         if (les && !curIsLES) {
-            m_solverCombo->setCurrentIndex(3); // pimpleFoam
+            m_solverCombo->setCurrentIndex(3);
         } else if (!les && curIsLES) {
-            m_solverCombo->setCurrentIndex(0); // simpleFoam
+            m_solverCombo->setCurrentIndex(0);
         }
     }
 
@@ -337,8 +326,6 @@ void PhysicsPanel::updateRe()
     m_reLabel->setText(QString("%1").arg(Re, 0, 'g', 5));
 }
 
-// Read helpers
-
 QString PhysicsPanel::readDictValue(const QString& filePath, const QString& key) const
 {
     QFile f(filePath);
@@ -355,7 +342,6 @@ void PhysicsPanel::loadFromCase()
 
     migrateTenolibsToControlDict(m_caseDir);
 
-    // Detect solver from controlDict application field first
     QString app = readDictValue(m_caseDir + "/system/controlDict", "application");
     if (!app.isEmpty()) {
         int idx = m_solverCombo->findData(app);
@@ -367,17 +353,15 @@ void PhysicsPanel::loadFromCase()
         }
     }
 
-    // Detect sim type + model from turbulenceProperties, the file v2412 solves from
     for (const QString& fname : {"turbulenceProperties", "momentumTransport"}) {
         QString simType = readDictValue(m_caseDir + "/constant/" + fname, "simulationType");
         if (simType == "LES") {
             QSignalBlocker b1(m_simTypeCombo), b2(m_solverCombo);
             m_simTypeCombo->setCurrentIndex(1);
             QString lesModel = readDictValue(m_caseDir + "/constant/" + fname, "LESModel");
-            // Sync solver to LES variant if not already
             QString cur = m_solverCombo->currentData().toString();
             if (!cur.contains("pimple", Qt::CaseInsensitive))
-                m_solverCombo->setCurrentIndex(3); // pimpleFoam
+                m_solverCombo->setCurrentIndex(3);
 
             m_modelCombo->blockSignals(true);
             m_modelCombo->clear();
@@ -403,7 +387,6 @@ void PhysicsPanel::loadFromCase()
         }
     }
 
-    // nu
     for (const QString& fname : {"transportProperties", "physicalProperties"}) {
         QString val = readDictValue(m_caseDir + "/constant/" + fname, "nu");
         if (!val.isEmpty()) {
@@ -413,7 +396,6 @@ void PhysicsPanel::loadFromCase()
         }
     }
 
-    // Inlet velocity from 0/U
     QFile uf(m_caseDir + "/0/U");
     if (uf.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QString txt = uf.readAll();
@@ -426,11 +408,9 @@ void PhysicsPanel::loadFromCase()
         }
     }
 
-    // Div scheme from system/fvSchemes
     QFile fvf(m_caseDir + "/system/fvSchemes");
     if (fvf.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QString txt = fvf.readAll();
-        // Look for div(phi,U) line
         QRegularExpression re(R"(div\(phi,U\)\s+Gauss\s+(\w+))");
         auto m = re.match(txt);
         if (m.hasMatch()) {
@@ -473,10 +453,9 @@ void PhysicsPanel::writeCakeProperties() const
     o << "rho   " << m_rhoSpin ->value() << ";\n";
     o << "Aref  " << m_arefSpin->value() << ";\n";
     o << "Lref  " << m_lengthSpin->value() << ";\n";
-    o << "Uref  0;\n";   // 0 = auto from inlet
+    o << "Uref  0;\n";
     f.close();
 
-    // Patch rhoInf in controlDict forces function object
     QString cdPath = m_caseDir + "/system/controlDict";
     QFile cd(cdPath);
     if (cd.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -489,8 +468,6 @@ void PhysicsPanel::writeCakeProperties() const
             QTextStream(&cd) << txt;
     }
 }
-
-// Write helpers
 
 bool PhysicsPanel::writeMomentumTransport()
 {
@@ -571,8 +548,6 @@ bool PhysicsPanel::writeInletVelocity()
     QTextStream(&f) << txt;
     return true;
 }
-
-// fvSchemes builder
 
 QString PhysicsPanel::buildFvSchemes(const QString& solver, const QString& scheme)
 {
@@ -663,7 +638,6 @@ bool PhysicsPanel::writeDivScheme()
 
     QDir(m_caseDir + "/system").mkpath(".");
 
-    // If fvSchemes doesn't exist yet, write a complete template
     if (!QFile::exists(path)) {
         QFile f(path);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -671,13 +645,11 @@ bool PhysicsPanel::writeDivScheme()
         return true;
     }
 
-    // Patch the existing file's div(phi,U) line and libs entry
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
     QString txt = f.readAll();
     f.close();
 
-    // Patch div(phi,U) line
     QString divLine;
     if (scheme == "teno")
         divLine = "    div(phi,U)      Gauss teno;";
@@ -688,14 +660,12 @@ bool PhysicsPanel::writeDivScheme()
 
     txt.replace(QRegularExpression(R"([ \t]*div\(phi,U\)[^\n]+)"), divLine);
 
-    // Remove any stale libs line that may have been written by an older version
     txt.replace(QRegularExpression(R"(\nlibs\s*\(\s*"libtenoScheme\.so"\s*\)\s*;\n?)"), "\n");
 
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     QTextStream(&f) << txt;
     f.close();
 
-    // OF 2412 only loads libs listed in controlDict.
     bool isTeno = (scheme == "teno" || scheme == "teno6");
     QString cdPath = m_caseDir + "/system/controlDict";
     QFile cd(cdPath);
@@ -704,7 +674,6 @@ bool PhysicsPanel::writeDivScheme()
         cd.close();
         bool hasLib = cdTxt.contains("libtenoScheme.so");
         if (isTeno && !hasLib) {
-            // Append a libs entry (or insert into existing one)
             if (cdTxt.contains(QRegularExpression(R"(\blibs\s*\()"))) {
                 cdTxt.replace(QRegularExpression(R"(\blibs\s*\()"), "libs\n(\n    \"libtenoScheme.so\"\n    ");
             } else {
@@ -728,14 +697,12 @@ bool PhysicsPanel::writeControlDictTimeSettings()
     QString txt = f.readAll();
     f.close();
 
-    QString scheme = m_divSchemeCombo->currentData().toString(); // "linearUpwind" | "teno" | "teno6"
+    QString scheme = m_divSchemeCombo->currentData().toString();
     QString solver = m_solverCombo->currentData().toString();
     bool les    = isLES();
     bool steady = !solver.contains("pimple", Qt::CaseInsensitive);
     bool teno   = (scheme == "teno" || scheme == "teno6");
 
-    // Time stepping. RANS uses pseudo-time, LES + linearUpwind maxCo 0.5,
-    // LES + TENO5/6 maxCo 0.4 for its lower numerical dissipation
     QString deltaT, endTime, writeControl, writeInterval, adjustTS, maxCo, maxDeltaT;
 
     if (steady) {
@@ -747,7 +714,6 @@ bool PhysicsPanel::writeControlDictTimeSettings()
         writeControl  = "timeStep";
         writeInterval = "100";
     } else if (teno) {
-        // LES + TENO5 or TENO6 has low dissipation → tight CFL
         deltaT        = "1e-5";
         endTime       = "0.5";
         adjustTS      = "yes";
@@ -756,7 +722,6 @@ bool PhysicsPanel::writeControlDictTimeSettings()
         writeControl  = "adjustableRunTime";
         writeInterval = "0.05";
     } else {
-        // LES + linearUpwind is a standard transient
         deltaT        = "1e-4";
         endTime       = "0.5";
         adjustTS      = "yes";
@@ -777,10 +742,8 @@ bool PhysicsPanel::writeControlDictTimeSettings()
     patch("maxDeltaT",      maxDeltaT);
     patch("writeControl",   writeControl);
     patch("writeInterval",  writeInterval);
-    // Always force startTime=0 so transient runs never start from a stale/diverged snapshot
     patch("startFrom",      "startTime");
 
-    // If adjustTimeStep / maxCo / maxDeltaT don't exist yet, insert before runTimeModifiable
     if (!txt.contains("adjustTimeStep"))
         txt.replace("runTimeModifiable",
                     "adjustTimeStep  " + adjustTS  + ";\n"
@@ -792,15 +755,12 @@ bool PhysicsPanel::writeControlDictTimeSettings()
     QTextStream(&f) << txt;
     f.close();
 
-    // Patch the fvSchemes ddtScheme and gradient scheme.
-    // Use line-level replacement so we never accidentally touch other one-liner blocks.
     QString schemesPath = m_caseDir + "/system/fvSchemes";
     QFile sf(schemesPath);
     if (sf.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QString stxt = sf.readAll();
         sf.close();
 
-        // ddtSchemes is backward for LES and steadyState for RANS
         QString ddt = steady ? "steadyState" : "backward";
         int pos = stxt.indexOf("ddtSchemes");
         if (pos >= 0) {
@@ -809,8 +769,6 @@ bool PhysicsPanel::writeControlDictTimeSettings()
             stxt.replace(pos, lineEnd - pos, "ddtSchemes      { default " + ddt + "; }");
         }
 
-        // TENO needs cellLimited gradSchemes to prevent gradient overshoots;
-        // linearUpwind is stable with plain Gauss linear
         QString grad = teno ? "cellLimited Gauss linear 1" : "Gauss linear";
         pos = stxt.indexOf("gradSchemes");
         if (pos >= 0) {
@@ -823,7 +781,6 @@ bool PhysicsPanel::writeControlDictTimeSettings()
             QTextStream(&sf) << stxt;
     }
 
-    // Patch fvSolution relaxation since TENO needs tighter factors than linearUpwind
     QString solPath = m_caseDir + "/system/fvSolution";
     QFile solF(solPath);
     if (solF.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -847,8 +804,6 @@ bool PhysicsPanel::writeControlDictTimeSettings()
     return true;
 }
 
-// Ensures UFinal, pFinal, and turbulence Final entries exist in fvSolution/solvers.
-// Patches the live file in place, safe on old cases that predate the template fix.
 static void patchFvSolutionFinals(const QString& caseDir)
 {
     QString path = caseDir + "/system/fvSolution";
@@ -859,7 +814,6 @@ static void patchFvSolutionFinals(const QString& caseDir)
 
     bool changed = false;
 
-    // Inserts insertion right after the closing } of the block that starts with key
     auto insertAfterBlock = [&](const QString& key, const QString& insertion) {
         QRegularExpression re("\\b" + key + "\\s*\\{[^}]+\\}");
         auto m = re.match(txt);
@@ -876,7 +830,6 @@ static void patchFvSolutionFinals(const QString& caseDir)
         insertAfterBlock("p", "    pFinal  { $p; relTol 0; }");
 
     if (!txt.contains("kFinal")) {
-        // Append turbulence finals after the last solver block before the closing }
         int closingBrace = txt.lastIndexOf(QRegularExpression("\\}\\s*\\}"));
         if (closingBrace > 0) {
             txt.insert(closingBrace,
@@ -909,7 +862,6 @@ void PhysicsPanel::onApply()
     if (!writeDivScheme())                  errors << "fvSchemes";
     if (!writeControlDictTimeSettings())    errors << "controlDict (time)";
 
-    // Fire citation for selected model
     auto& cm = CitationManager::instance();
     QString model = m_modelCombo->currentText().toLower();
     if (isLES()) {
@@ -924,7 +876,6 @@ void PhysicsPanel::onApply()
 
     writeCakeProperties();
 
-    // Patch controlDict application field with selected solver
     QString solver = m_solverCombo->currentData().toString();
     QString cdPath = m_caseDir + "/system/controlDict";
     QFile cdf(cdPath);
@@ -937,7 +888,6 @@ void PhysicsPanel::onApply()
             QTextStream(&cdf) << txt;
     }
 
-    // Emit so MainWindow toolbar / run button can pick up the right solver
     emit solverRecommended(solver);
 
     if (!errors.isEmpty())
@@ -947,8 +897,6 @@ void PhysicsPanel::onApply()
         QMessageBox::information(this, "Applied",
             "Physics settings written to case.\nRerun the solver to apply.");
 }
-
-// project save / restore
 
 static QString readFirstMatch(const QString& path, const QRegularExpression& re)
 {
@@ -962,26 +910,21 @@ QJsonObject PhysicsPanel::snapshotFromCase(const QString& caseDir)
 {
     QJsonObject o;
 
-    // solver (controlDict application field)
     o["solver"] = readFirstMatch(caseDir + "/system/controlDict",
                                  QRegularExpression(R"(\bapplication\s+(\w+)\s*;)"));
 
-    // div scheme
     o["div_scheme"] = readFirstMatch(caseDir + "/system/fvSchemes",
                                      QRegularExpression(R"(div\(phi,U\)\s+Gauss\s+(\w+))"));
 
-    // turbulence model
     QString turbDict = caseDir + "/constant/turbulenceProperties";
     if (!QFile::exists(turbDict)) turbDict = caseDir + "/constant/momentumTransport";
     o["turb_model"] = readFirstMatch(turbDict,
                                      QRegularExpression(R"(\bmodel\s+(\w+)\s*;)"));
 
-    // nu from transportProperties
     o["nu"] = readFirstMatch(caseDir + "/constant/transportProperties",
                              QRegularExpression(R"(\bnu\s+\[.*?\]\s+([\d.eE+\-]+))"))
               .toDouble();
 
-    // rho, Aref, Lref from cakeProperties
     auto readCakeProp = [&](const QString& key) -> double {
         return readFirstMatch(caseDir + "/system/cakeProperties",
                               QRegularExpression(key + R"(\s+([\d.eE+\-]+)\s*;)")).toDouble();
@@ -990,7 +933,6 @@ QJsonObject PhysicsPanel::snapshotFromCase(const QString& caseDir)
     o["a_ref"] = readCakeProp("Aref");
     o["l_ref"] = readCakeProp("Lref");
 
-    // inlet velocity from 0/U (inlet patch)
     {
         QFile f(caseDir + "/0/U");
         if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -1012,7 +954,6 @@ void PhysicsPanel::restoreToCase(const QString& caseDir, const QJsonObject& o)
 {
     if (caseDir.isEmpty() || o.isEmpty()) return;
 
-    // Apply div scheme + libs to fvSchemes
     QString scheme = o["div_scheme"].toString();
     QString solver = o["solver"].toString();
     if (!scheme.isEmpty()) {
@@ -1028,14 +969,12 @@ void PhysicsPanel::restoreToCase(const QString& caseDir, const QJsonObject& o)
             else                        divLine = "    div(phi,U)      Gauss linearUpwindV grad(U);";
             txt.replace(QRegularExpression(R"([ \t]*div\(phi,U\)[^\n]+)"), divLine);
 
-            // Remove any stale libs line from fvSchemes
             txt.replace(QRegularExpression(R"(\nlibs\s*\(\s*"libtenoScheme\.so"\s*\)\s*;\n?)"), "\n");
 
             if (f.open(QIODevice::WriteOnly | QIODevice::Text))
                 QTextStream(&f) << txt;
         }
 
-        // Patch libs in controlDict
         bool isTeno = (scheme == "teno" || scheme == "teno6");
         QString cdPath = caseDir + "/system/controlDict";
         QFile cd(cdPath);
@@ -1057,7 +996,6 @@ void PhysicsPanel::restoreToCase(const QString& caseDir, const QJsonObject& o)
         }
     }
 
-    // Restore solver in controlDict
     if (!solver.isEmpty()) {
         QFile f(caseDir + "/system/controlDict");
         if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -1070,7 +1008,6 @@ void PhysicsPanel::restoreToCase(const QString& caseDir, const QJsonObject& o)
         }
     }
 
-    // Restore rho/Aref/Lref in cakeProperties
     {
         QDir(caseDir + "/system").mkpath(".");
         QFile f(caseDir + "/system/cakeProperties");
@@ -1084,7 +1021,6 @@ void PhysicsPanel::restoreToCase(const QString& caseDir, const QJsonObject& o)
         }
     }
 
-    // Restore inlet velocity in 0/U
     if (o.contains("ux")) {
         QFile f(caseDir + "/0/U");
         if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -1110,20 +1046,18 @@ void PhysicsPanel::migrateTenolibsToControlDict(const QString& caseDir)
     QString fvTxt = fvf.readAll();
     fvf.close();
 
-    if (!fvTxt.contains("libtenoScheme.so")) return;  // nothing to migrate
+    if (!fvTxt.contains("libtenoScheme.so")) return;
 
-    // Strip the stale libs line from fvSchemes
     fvTxt.replace(QRegularExpression(R"(\nlibs\s*\(\s*"libtenoScheme\.so"\s*\)\s*;\n?)"), "\n");
     if (fvf.open(QIODevice::WriteOnly | QIODevice::Text))
         QTextStream(&fvf) << fvTxt;
 
-    // Add it to controlDict if not already there
     QFile cdf(cdPath);
     if (!cdf.open(QIODevice::ReadOnly | QIODevice::Text)) return;
     QString cdTxt = cdf.readAll();
     cdf.close();
 
-    if (cdTxt.contains("libtenoScheme.so")) return;  // already correct
+    if (cdTxt.contains("libtenoScheme.so")) return;
 
     if (cdTxt.contains(QRegularExpression(R"(\blibs\s*\()")))
         cdTxt.replace(QRegularExpression(R"(\blibs\s*\()"),

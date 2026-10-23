@@ -92,13 +92,11 @@ private:
     QSettings           m_settings;
     QString             m_activeCaseDir;
 
-    // API
     QLineEdit*   m_endpointEdit   = nullptr;
     QLineEdit*   m_tokenEdit      = nullptr;
     QComboBox*   m_spatialInterp  = nullptr;
     QComboBox*   m_temporalInterp = nullptr;
 
-    // Dataset
     QComboBox*      m_datasetCombo  = nullptr;
     QLabel*         m_datasetDesc   = nullptr;
     QComboBox*      m_fieldCombo    = nullptr;
@@ -113,13 +111,11 @@ private:
     QWidget*        m_singleWidget  = nullptr;
     QWidget*        m_rangeWidget   = nullptr;
 
-    // Points
     QComboBox*      m_patchCombo    = nullptr;
     QPlainTextEdit* m_pointsEdit    = nullptr;
     QLabel*         m_ptCountLbl    = nullptr;
     QPushButton*    m_autowrapBtn   = nullptr;
 
-    // Controls
     QPushButton*    m_queryBtn      = nullptr;
     QPushButton*    m_cancelBtn     = nullptr;
     QPushButton*    m_exportBtn     = nullptr;
@@ -128,14 +124,12 @@ private:
     QPushButton*    m_viewReqBtn    = nullptr;
     QProgressBar*   m_progress      = nullptr;
 
-    // Output
     ResultCanvas*   m_canvas        = nullptr;
     QLabel*         m_statsLabel    = nullptr;
     QTextEdit*      m_log           = nullptr;
 
     QList<CFD::DatasetInfo>  m_datasets;
 
-    // Last query state (for export + Python generation)
     struct LastQuery {
         QString dataset, field, endpoint;
         double  time = 0;

@@ -21,7 +21,10 @@ env:
 
 jobs:
   linux:
-    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        runner: [ ubuntu-24.04, ubuntu-24.04-arm ]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,7 +59,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --draft --title "CakeStudio $TAG" --notes ""
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --draft --title "CakeStudio $TAG" --notes "" || true
           gh release upload "$TAG" dist/*.tar.gz packaging/linux/install.sh --clobber
 
   windows:

@@ -7,11 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Refinement sequence. Ratio r = 2 throughout, well above the r > 1.3 that Celik et al.
-# (2008) recommend for the grid-convergence procedure.
 GRIDS = [20, 40, 80, 160]
 
-# Scheme name as written into fvSchemes -> label used in the report.
 SCHEMES = {
     "linear": "linear (CD2)",
     "linearUpwind grad(T)": "linearUpwind",
@@ -23,7 +20,6 @@ END_TIME = 1.0          # one full period at u = 1 m/s over a unit domain
 CFL_COARSE = 0.2        # CFL on the coarsest grid; finer grids scale down as dx^2.5
 TENO_LIBS = '("libtenoScheme.so")'
 
-
 def head():
     return (
         "FoamFile\n"
@@ -31,9 +27,7 @@ def head():
         "    version 2.0; format ascii;\n"
     )
 
-
 def write_blockmesh(case: Path, n: int):
-    # 1-D strip with n cells in x, one cell in y and z, front/back and top/bottom empty.
     (case / "system").mkdir(parents=True, exist_ok=True)
     (case / "system" / "blockMeshDict").write_text(
         head() + "    class dictionary; object blockMeshDict;\n}\n\n"
@@ -52,13 +46,10 @@ def write_blockmesh(case: Path, n: int):
         "mergePatchPairs ();\n"
     )
 
-
 def write_fields(case: Path, n: int):
     zero = case / "0"
     zero.mkdir(parents=True, exist_ok=True)
 
-    # T is set directly on cell centres so the initial
-    # condition carries no additional discretisation error of its own.
     xs = [(i + 0.5) / n for i in range(n)]
     vals = "\n".join(f"{math.sin(2.0 * math.pi * x):.16e}" for x in xs)
     (zero / "T").write_text(
@@ -83,12 +74,10 @@ def write_fields(case: Path, n: int):
     )
     const = case / "constant"
     const.mkdir(parents=True, exist_ok=True)
-    # Zero diffusivity gives pure advection, so div(phi,T) is the only term under test.
     (const / "transportProperties").write_text(
         head() + "    class dictionary; object transportProperties;\n}\n\n"
         "DT [0 2 -1 0 0 0 0] 0;\n"
     )
-
 
 def write_system(case: Path, n: int, scheme: str, dt: float):
     sysd = case / "system"
@@ -113,8 +102,6 @@ def write_system(case: Path, n: int, scheme: str, dt: float):
     )
     (sysd / "fvSchemes").write_text(
         head() + "    class dictionary; object fvSchemes;\n}\n\n"
-        # CrankNicolson 1 is second order in time; dt ~ dx^2.5 keeps its error
-        # an order of magnitude below the spatial error being measured.
         "ddtSchemes      { default CrankNicolson 1; }\n"
         "gradSchemes     { default Gauss linear; }\n"
         f"divSchemes      {{ default none; div(phi,T) Gauss {scheme}; }}\n"
@@ -130,7 +117,6 @@ def write_system(case: Path, n: int, scheme: str, dt: float):
         "}\n\n"
         "SIMPLE { nNonOrthogonalCorrectors 0; }\n"
     )
-
 
 def read_internal_field(path: Path):
     """Parse the internalField of an ASCII OpenFOAM volScalarField."""
@@ -155,11 +141,9 @@ def read_internal_field(path: Path):
         raise ValueError(f"{path} is a uniform field; the solution collapsed")
     raise ValueError(f"could not parse internalField from {path}")
 
-
 def run(cmd, cwd):
     p = subprocess.run(cmd, cwd=cwd, shell=True, capture_output=True, text=True)
     return p.returncode, p.stdout + p.stderr
-
 
 def norms(num, exact, n):
     """Grid-normalised L1, L2 and Linf error norms."""
@@ -168,7 +152,6 @@ def norms(num, exact, n):
     l2 = math.sqrt(sum(d * d for d in diffs) / n)
     li = max(abs(d) for d in diffs)
     return l1, l2, li
-
 
 def main():
     if not os.environ.get("FOAM_APPBIN"):
@@ -190,8 +173,6 @@ def main():
         results[label] = []
         for n in GRIDS:
             dx = 1.0 / n
-            # dt ~ dx^2.5 so the second-order-in-time error falls faster than a
-            # fifth-order spatial error and never becomes the limiting term.
             dt = dt_coarse * (dx / dx_coarse) ** 2.5
             case = work / f"{label.split()[0].replace('(','').replace(')','')}_N{n}"
             case.mkdir(parents=True, exist_ok=True)
@@ -230,7 +211,6 @@ def main():
             results[label].append((n, l1, l2, li))
             print(f"  {label:14s} N={n:4d}  L1={l1:.4e}  L2={l2:.4e}  Linf={li:.4e}")
 
-    # Report
     out_csv = root / "results_order.csv"
     lines = ["scheme,N,L1,L2,Linf,order_L1,order_L2,order_Linf"]
     print("\n" + "=" * 78)
@@ -268,7 +248,6 @@ def main():
     print("An observed order clamped near 2 for the TENO schemes indicates the")
     print("surrounding finite-volume framework is limiting the reconstruction.")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -24,7 +24,7 @@
 namespace CFD {
 
 struct SnappyParams {
-    QString surfaceName;             // matches STL filename (no extension)
+    QString surfaceName;
     int     maxGlobalCells   = 2000000;
     int     maxLocalCells    = 100000;
     int     minRefinementCells = 10;
@@ -35,7 +35,7 @@ struct SnappyParams {
     double  snapTolerance  = 2.0;
     int     nSolveIter     = 30;
     int     nRelaxIter     = 5;
-    int     nSurfaceLayers = 3;      // boundary layer cells
+    int     nSurfaceLayers = 3;
     double  layerExpansionRatio = 1.2;
     double  finalLayerThickness = 0.3;
     double  minThickness        = 0.1;
@@ -45,9 +45,8 @@ struct SnappyParams {
 class SnappyConfigWriter {
 public:
     static bool write(const QString& caseDir, const SnappyParams& p);
-    // Also write surfaceFeatureExtractDict (needed before snappyHexMesh)
     static bool writeFeatureExtract(const QString& caseDir,
                                      const QString& surfaceName);
 };
 
-} // namespace CFD
+}

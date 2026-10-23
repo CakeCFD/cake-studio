@@ -27,11 +27,10 @@
 
 class ViewportWidget;
 
-// Data roles stored on each QTreeWidgetItem
 enum CaseItemRole {
-    RolePath      = Qt::UserRole,       // absolute file path
-    RoleType      = Qt::UserRole + 1,   // CaseItemType
-    RoleStepIndex = Qt::UserRole + 2,   // index into m_timeSteps (result steps)
+    RolePath      = Qt::UserRole,
+    RoleType      = Qt::UserRole + 1,
+    RoleStepIndex = Qt::UserRole + 2,
 };
 
 enum CaseItemType {
@@ -76,5 +75,5 @@ private:
     QLabel*              m_statusLabel;
     ViewportWidget*      m_viewport = nullptr;
     QFileSystemWatcher*  m_watcher  = nullptr;
-    QTimer*              m_refreshTimer = nullptr;   // debounce rapid FS events
+    QTimer*              m_refreshTimer = nullptr;
 };

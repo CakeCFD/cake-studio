@@ -5,7 +5,6 @@ PORT = 8765
 SOAP_PATH = '/turbulence.asmx'
 JHTDB_NS  = 'http://turbulence.pha.jhu.edu/'
 
-# JHTDB SpatialInterpolation / TemporalInterpolation enum members
 SPATIAL_INTERP = {
     'None', 'Lag4', 'Lag6', 'Lag8',
     'None_Fd4', 'None_Fd6', 'None_Fd8', 'Fd4Lag4',
@@ -15,8 +14,6 @@ SPATIAL_INTERP = {
     'M4Q4', 'M4Q6', 'M4Q8', 'M4Q10', 'M4Q12', 'M4Q14',
 }
 TEMPORAL_INTERP = {'None', 'PCHIP'}
-
-# synthetic field generators
 
 def _turb_velocity(x, y, z, t):
     """Fake turbulent velocity - sinusoidal with seeded noise."""
@@ -42,7 +39,6 @@ def _temperature(x, y, z, t):
     return 300.0 + 5.0 * math.sin(math.pi*x) * math.cos(math.pi*y)
 
 def _vel_gradient(x, y, z, t):
-    # d/dx of (vx,vy,vz) approximated analytically from _turb_velocity
     dx = 1e-4
     vx0,vy0,vz0 = _turb_velocity(x,    y, z, t)
     vxX,vyX,vzX = _turb_velocity(x+dx, y, z, t)
@@ -60,8 +56,6 @@ def _pressure_gradient(x, y, z, t):
     dpy = (_pressure(x, y+dx, z, t) - p0) / dx
     dpz = (_pressure(x, y, z+dx, t) - p0) / dx
     return dpx, dpy, dpz
-
-# SOAP helpers
 
 def _parse_points(body: str):
     """Extract list of (x,y,z) from SOAP request body."""
@@ -92,10 +86,6 @@ def _soap_fault(msg: str) -> bytes:
     ).encode()
 
 def _soap_wrap(method: str, inner: str) -> bytes:
-    # Matches the real JHTDB response envelope exactly
-    # <{Method}Response xmlns="http://turbulence.pha.jhu.edu/">
-    #   <{Method}Result> ... structs with bare element names ... </{Method}Result>
-    # </...Response>
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
@@ -111,8 +101,6 @@ def _soap_wrap(method: str, inner: str) -> bytes:
 
 def _handle_soap(body: str, method: str):
     """Returns (http_status, xml_bytes)."""
-    # Interpolation elements are optional here (curl tests omit them) but,
-    # when present, must use the WSDL element names and enum values
     for legacy in ('spatialInterp', 'temporalInterp'):
         if _parse_elem(body, legacy) is not None:
             return 500, _soap_fault(f'Unknown element <{legacy}>: use '
@@ -140,7 +128,6 @@ def _handle_soap_points(body: str, method: str) -> bytes:
                 f'<x>{vx:.6f}</x><y>{vy:.6f}</y><z>{vz:.6f}</z>'
                 f'</Vector3>')
         elif method == 'GetPressure':
-            # Real JHTDB wraps it as <Pressure><p>float</p></Pressure>
             chunks.append(f'<Pressure><p>{_pressure(x,y,z,t):.6f}</p></Pressure>')
         elif method == 'GetVorticity':
             wx,wy,wz = _vorticity(x,y,z,t)
@@ -155,7 +142,6 @@ def _handle_soap_points(body: str, method: str) -> bytes:
                 f'<x>{bx:.6f}</x><y>{by:.6f}</y><z>{bz:.6f}</z>'
                 f'</Vector3>')
         elif method == 'GetTemperature':
-            # Real JHTDB wraps it as <Temperature><p>float</p></Temperature>
             chunks.append(f'<Temperature><p>{_temperature(x,y,z,t):.6f}</p></Temperature>')
         elif method == 'GetVelocityGradient':
             g = _vel_gradient(x,y,z,t)
@@ -172,8 +158,6 @@ def _handle_soap_points(body: str, method: str) -> bytes:
             return _soap_wrap(method, f'<tns:Error>Unknown method: {method}</tns:Error>')
 
     return _soap_wrap(method, ''.join(chunks))
-
-# mock datasets
 
 DATASETS = [
     {
@@ -195,8 +179,6 @@ DATASETS = [
         "tMin": 0.0, "tMax": 2.56, "dt": 0.0025
     },
 ]
-
-# HTTP handler
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
@@ -230,7 +212,6 @@ class Handler(BaseHTTPRequestHandler):
         body   = self.rfile.read(length).decode('utf-8', errors='replace')
 
         if self.path == '/query':
-            # Custom REST API mode
             try:
                 req = json.loads(body)
             except json.JSONDecodeError:
@@ -255,8 +236,6 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, 'application/json', json.dumps({'results': results}).encode())
             return
 
-        # SOAP dispatch (SOAP_PATH, or any other path for curl tests) -
-        # method from the SOAPAction header ("<namespace>GetVelocity") or body
         soap_action = self.headers.get('SOAPAction', '').strip('"').split('/')[-1]
         if not soap_action:
             m = re.search(r'<(?:\w+:)?(Get\w+)[\s>]', body)
@@ -264,7 +243,6 @@ class Handler(BaseHTTPRequestHandler):
 
         status, resp = _handle_soap(body, soap_action)
         self._send(status, 'text/xml; charset=utf-8', resp)
-
 
 if __name__ == '__main__':
     import sys

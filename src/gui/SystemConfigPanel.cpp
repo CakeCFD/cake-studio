@@ -35,8 +35,6 @@
 #include <QFontMetrics>
 #include <QSizePolicy>
 
-// Defined below; declared here because the constructor writes controlDict when
-// a spinbox finishes editing.
 static bool writeDictVal(const QString& path, const QString& key, const QString& value);
 
 static QFrame* makeSep()
@@ -52,11 +50,9 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
 {
     setFixedHeight(52);
 
-    // Outer panel only provides background and padding for the block
     auto* outer = new QHBoxLayout(this);
     outer->setContentsMargins(8, 6, 8, 6);
 
-    // One single elevated block spanning the full width
     m_block = new QFrame;
     m_block->setFrameShape(QFrame::NoFrame);
     outer->addWidget(m_block);
@@ -65,7 +61,6 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
     lay->setContentsMargins(12, 4, 12, 4);
     lay->setSpacing(14);
 
-    // CPU
     auto* cpuIcon = new QLabel("⚙");
     cpuIcon->setStyleSheet("font-size:15px;");
     lay->addWidget(cpuIcon);
@@ -126,7 +121,7 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
     lay->addWidget(stepsLbl);
     m_stepsSpin = new GDoubleSpinBox;
     m_stepsSpin->setRange(0.0, 1e9);
-    m_stepsSpin->setDecimals(10);   // transient endTime can be 0.001 or smaller
+    m_stepsSpin->setDecimals(10);
     m_stepsSpin->setSingleStep(0.5);
     m_stepsSpin->setValue(200.0);
     m_stepsSpin->setFixedWidth(80);
@@ -135,20 +130,12 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
     connect(m_stepsSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, [this](double v){ emit stepsChanged(static_cast<int>(v)); });
 
-    // Persist as soon as the user finishes editing. Anything that rewrites
-    // controlDict (the solver config dialog, for one) triggers a refresh that
-    // reloads these spinboxes from the file, so a value that was only sitting in
-    // the widget would be silently replaced by the stale one on disk.
-    // editingFinished also fires on plain focus-out (and Return) with nothing
-    // edited, so writeControlDictIfEdited() only writes values that differ from
-    // what was last loaded from or written to the file.
     connect(m_stepsSpin, &QAbstractSpinBox::editingFinished,
             this, &SystemConfigPanel::writeControlDictIfEdited);
 
     auto* writeEveryLbl = new QLabel("Save every:");
     writeEveryLbl->setStyleSheet("font-size:11px;");
     lay->addWidget(writeEveryLbl);
-    // Double-valued because transient cases use writeInterval in seconds (0.0005)
     m_writeEvery = new GDoubleSpinBox;
     m_writeEvery->setRange(1e-9, 1e9);
     m_writeEvery->setDecimals(10);
@@ -191,7 +178,6 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
     m_gpuCheck->setEnabled(false);
     lay->addWidget(m_gpuCheck);
 
-    // VRAM limit spinbox
     auto* vramLabel = new QLabel("VRAM:");
     vramLabel->setStyleSheet("font-size:12px;");
     lay->addWidget(vramLabel);
@@ -232,7 +218,6 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
         onThemeChanged();
     });
 
-    // Update MB label whenever VRAM % changes
     connect(m_vramSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int pct) {
         if (!m_gpus.isEmpty() && m_vramMbLbl) {
             int mb = m_gpus[0].vramMB * pct / 100;
@@ -254,8 +239,6 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
 
     connect(btnApply, &QPushButton::clicked, this, &SystemConfigPanel::onApply);
 
-    // QGraphicsDropShadowEffect triggers a full offscreen blur composite on every
-    // repaint, which kills frame rate while dragging panels.
     m_block->setStyleSheet(m_block->styleSheet() +
         "QFrame { border-bottom: 2px solid rgba(0,0,0,120); }");
 
@@ -267,7 +250,6 @@ void SystemConfigPanel::onThemeChanged()
 {
     const ThemeColors& c = ThemeEngine::instance().colors();
 
-    // Outer panel matches the main window background so the block floats inside it
     setStyleSheet(QString("SystemConfigPanel { background:%1; }").arg(c.window.name()));
 
     if (m_block) {
@@ -305,8 +287,6 @@ void SystemConfigPanel::detect()
         m_coresSpin->setValue(qMax(1, m_physicalCores));
     }
 
-    // exitCode() is 0 when nvidia-smi is missing (FailedToStart), so check that
-    // the process really started and exited normally before trusting it
     QProcess smi;
     smi.start("nvidia-smi", {"--query-gpu=name,memory.total", "--format=csv,noheader,nounits"});
     const bool started  = smi.waitForStarted(2000);
@@ -330,7 +310,7 @@ void SystemConfigPanel::detect()
                 m_vramMbLbl->setText(QString("(%1 MB)").arg(mb));
                 m_vramMbLbl->setVisible(true);
             }
-            onThemeChanged();  // apply accent colour now that GPU is known
+            onThemeChanged();
         } else {
             m_gpuLabel->setText("No GPU detected");
         }
@@ -371,8 +351,6 @@ void SystemConfigPanel::setCaseDir(const QString& dir)
     m_caseDir = dir;
     m_statusLbl->clear();
 
-    // Only read controlDict into spinboxes when switching to a different case;
-    // don't clobber values the user has already typed in the current session.
     if (newCase) loadControlDict();
 }
 
@@ -396,8 +374,6 @@ void SystemConfigPanel::loadControlDict()
         bool ok; double v = wi.toDouble(&ok);
         if (ok) m_writeEvery->setValue(v);
     }
-    // Sync point is whatever the widgets now show. A missing or non-numeric
-    // entry (#calc, $var) is then only overwritten if the user edits the box.
     if (m_stepsSpin)  m_syncedEndTime       = m_stepsSpin->value();
     if (m_writeEvery) m_syncedWriteInterval = m_writeEvery->value();
 }
@@ -422,8 +398,6 @@ void SystemConfigPanel::writeControlDictIfEdited()
 void SystemConfigPanel::onApply()
 {
     writeDecomposeParDict();
-    // Only values the user actually edited, since onApply also runs right before every
-    // solver start, after other panels may have rewritten controlDict
     writeControlDictIfEdited();
     onThemeChanged();
 }
@@ -448,7 +422,6 @@ void SystemConfigPanel::writeDecomposeParDict()
     QString methodBlock;
     if (method == "simple" || method == "hierarchical") {
         int nx = m_nx->value(), ny = m_ny->value(), nz = m_nz->value();
-        // decomposePar aborts when the split does not cover every subdomain
         if (nx * ny * nz != n) {
             m_statusLbl->setText(QString("nx*ny*nz = %1 must equal Cores (%2): not written.")
                                      .arg(nx * ny * nz).arg(n));
@@ -462,7 +435,6 @@ void SystemConfigPanel::writeDecomposeParDict()
                           .arg(QString("1 ").repeated(n));
         m_statusLbl->setText(QString("Written: %1 cores  metis").arg(n));
     } else {
-        // scotch / ptscotch
         methodBlock = QString("method  %1;\n\n%1Coeffs\n{\n    processorWeights ( %2);\n}\n")
                           .arg(method).arg(QString("1 ").repeated(n));
         m_statusLbl->setText(QString("Written: %1 cores  %2").arg(n).arg(method));

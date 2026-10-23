@@ -5,13 +5,6 @@ find_package(VTK 9 REQUIRED COMPONENTS
     IOGeometry IOImport IOParallel
     GUISupportQt RenderingAnnotation)
 
-if(NOT TARGET JsonCpp::JsonCpp)
-    add_library(JsonCpp::JsonCpp SHARED IMPORTED)
-    set_target_properties(JsonCpp::JsonCpp PROPERTIES
-        IMPORTED_LOCATION /usr/lib/x86_64-linux-gnu/libjsoncpp.so
-        INTERFACE_INCLUDE_DIRECTORIES /usr/include/jsoncpp)
-endif()
-
 set(SOURCES
     main.cpp
     MainWindow.cpp
@@ -72,7 +65,6 @@ set(HEADERS
 add_executable(CFDStudio ${SOURCES} ${HEADERS})
 
 target_include_directories(CFDStudio PRIVATE
-    /usr/include/vtk-9.1
     ${CMAKE_SOURCE_DIR}/src/geometry
     ${CMAKE_SOURCE_DIR}/src/meshing)
 

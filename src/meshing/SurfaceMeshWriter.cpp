@@ -38,12 +38,10 @@ QString SurfaceMeshWriter::write(const CADGeometry& geo,
 {
     if (!geo.isValid() || !geo.polyData()) return {};
 
-    // Ensure directory exists
     QDir dir(caseDir);
     dir.mkpath("constant/triSurface");
     QString outPath = dir.filePath("constant/triSurface/" + surfaceName + ".stl");
 
-    // Clean + triangulate the poly data before export
     auto clean = vtkSmartPointer<vtkCleanPolyData>::New();
     clean->SetInputData(geo.polyData());
     clean->Update();
@@ -64,10 +62,9 @@ QString SurfaceMeshWriter::write(const CADGeometry& geo,
     writer->SetFileName(outPath.toStdString().c_str());
     writer->SetInputConnection(normFilter->GetOutputPort());
     writer->SetFileTypeToASCII();
-    // vtkWriter::Write returns 1 on success; an empty path tells the caller it failed
     if (writer->Write() != 1 || !QFileInfo::exists(outPath)) return {};
 
     return outPath;
 }
 
-} // namespace CFD
+}

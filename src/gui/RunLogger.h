@@ -27,12 +27,12 @@ struct RunInfo {
     int     index      = 0;
     QString path;
     QString solver;
-    QString divScheme;     // "linearUpwind" | "teno5" | "teno6"
-    QString flowDir;       // path to run's snapshotted flow data (for vtkOpenFOAMReader)
-    QStringList timeSteps; // snapshotted time step dirs available in flowDir
+    QString divScheme;
+    QString flowDir;
+    QStringList timeSteps;
     QString simType;
     QString turbModel;
-    QString deltaModel;   // LES filter-width model (empty for RAS/laminar)
+    QString deltaModel;
     QString nu;
     QString inletU;
     QString endTime;
@@ -56,17 +56,11 @@ struct RunInfo {
 
 class RunLogger {
 public:
-    // Call just before the solver starts. Snapshots inputs and returns the run directory
     static QString        startRun(const QString& caseDir, const QString& solver);
-    // Call after the solver exits to write results CSV, metadata.json and run_report.md.
-    // stopped marks a run the user interrupted (kept, but flagged in metadata).
     static void           finishRun(const QString& runDir, const QString& caseDir, bool converged,
                                     bool stopped = false);
-    // Returns all runs found in <caseDir>/runs/, sorted by index
     static QList<RunInfo> listRuns(const QString& caseDir);
-    // Reads a RunInfo from a run directory's metadata.json
     static RunInfo        readRunInfo(const QString& runDir);
-    // Writes a full markdown report for a RunInfo to outputPath
     static bool           generateReport(const RunInfo& info, const QString& outputPath);
 
 private:

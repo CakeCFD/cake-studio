@@ -12,7 +12,6 @@ using Microsoft.Win32;
 static class Product
 {
     public const string Name = "CakeStudio";
-    // Set at build time from the release tag (build-setup.cmd embeds VERSION.txt)
     static string version;
     public static string Version
     {
@@ -57,7 +56,6 @@ static class Product
     }
 }
 
-// Runs wsl.exe and streams its output line by line
 static class Wsl
 {
     public static string Exe
@@ -65,7 +63,6 @@ static class Wsl
         get
         {
             string dir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-            // A 32-bit process on 64-bit Windows must go through Sysnative to see wsl.exe
             if (!Environment.Is64BitProcess && Environment.Is64BitOperatingSystem)
                 return Path.Combine(dir, @"Sysnative\wsl.exe");
             return Path.Combine(dir, @"System32\wsl.exe");
@@ -100,7 +97,6 @@ static class Wsl
             p.BeginErrorReadLine();
             if (stdin != null)
             {
-                // bash reads the script from stdin, so it needs LF endings and no BOM
                 var w = new StreamWriter(p.StandardInput.BaseStream, new UTF8Encoding(false));
                 w.NewLine = "\n";
                 w.Write(stdin.Replace("\r\n", "\n"));
@@ -127,7 +123,6 @@ static class Wsl
         catch (Exception) { return false; }
     }
 
-    // Name of a WSL2 Ubuntu 24.04 distribution, preferring the default one
     public static string FindUbuntu2404()
     {
         string list = Capture("-l -v");
@@ -193,7 +188,6 @@ class SetupForm : Form
 {
     enum PageId { Welcome, License, Linux, Components, Ready, Installing, Restart, Finish }
 
-    // Classic wizard metrics at 96 DPI
     const int W = 497, H = 360, TopH = 313, HeaderH = 57;
 
     readonly SetupState state;
@@ -205,7 +199,6 @@ class SetupForm : Form
     readonly Dictionary<PageId, Panel> pages = new Dictionary<PageId, Panel>();
     Button backBtn, nextBtn, cancelBtn;
 
-    // Page widgets
     RadioButton acceptRadio, declineRadio;
     Label wslStatus, distroStatus, linuxNote;
     CheckBox installWslCheck, tenoCheck, desktopCheck, startMenuCheck;
@@ -277,8 +270,6 @@ class SetupForm : Form
         if (resuming) Go(PageId.Installing);
     }
 
-    // Layout helpers
-
     static Label Etched(int x, int y, int w)
     {
         return new Label { BorderStyle = BorderStyle.Fixed3D, Bounds = new Rectangle(x, y, w, 2) };
@@ -292,7 +283,6 @@ class SetupForm : Form
         return b;
     }
 
-    // Welcome and Finish pages have the banner on the left and a white text panel on the right
     Panel BannerPage(PageId id, string title, out Panel body)
     {
         var p = new Panel { Bounds = new Rectangle(0, 0, W, TopH), BackColor = Color.White, Visible = false };
@@ -317,7 +307,6 @@ class SetupForm : Form
         return p;
     }
 
-    // Inner pages have a white header with title, subtitle and logo over a grey body
     Panel InnerPage(PageId id, string title, string subtitle)
     {
         var p = new Panel { Bounds = new Rectangle(0, 0, W, TopH), Visible = false };
@@ -343,8 +332,6 @@ class SetupForm : Form
         parent.Controls.Add(l);
         return l;
     }
-
-    // Pages
 
     void BuildWelcome()
     {
@@ -468,8 +455,6 @@ class SetupForm : Form
         body.Controls.Add(launchCheck);
     }
 
-    // Navigation
-
     static PageId Prev(PageId p)
     {
         return p == PageId.Welcome ? p : (PageId)((int)p - 1);
@@ -590,9 +575,6 @@ class SetupForm : Form
         readyText.Text = sb.ToString();
     }
 
-    // Installation (background thread)
-
-    // Silent mode writes progress to this log
     TextWriter silentLog;
 
     void Log(string line)
@@ -619,7 +601,6 @@ class SetupForm : Form
         });
     }
 
-    // Maps the script's @@ markers onto a slice [lo, hi] of the overall bar
     Action<string> ScriptOutput(int lo, int hi, List<string> errors)
     {
         return delegate(string line)
@@ -627,7 +608,7 @@ class SetupForm : Form
             if (line.StartsWith("@@STEP "))
             {
                 Status(line.Substring(7), -1);
-                if (silentLog == null) Log(line.Substring(7));   // silent Status already logs it
+                if (silentLog == null) Log(line.Substring(7));
             }
             else if (line.StartsWith("@@PROGRESS "))
             {
@@ -682,7 +663,6 @@ class SetupForm : Form
 
     class RestartNeeded : Exception { }
 
-    // Unattended install with default components; returns a process exit code
     public int RunSilent(string logPath)
     {
         using (silentLog = new StreamWriter(logPath, false, new UTF8Encoding(false)) { AutoFlush = true })
@@ -695,7 +675,7 @@ class SetupForm : Form
             catch (RestartNeeded)
             {
                 Log("Restart Windows to finish enabling WSL, then run Setup again.");
-                return 3010;   // the conventional "restart required" installer code
+                return 3010;
             }
             catch (Exception e)
             {
@@ -707,7 +687,6 @@ class SetupForm : Form
 
     void Install()
     {
-        // 1. WSL itself
         Status("Checking the Windows Subsystem for Linux...", 2);
         wslInstalled = Wsl.IsInstalled();
         if (!wslInstalled)
@@ -731,7 +710,6 @@ class SetupForm : Form
             throw new RestartNeeded();
         }
 
-        // 2. Ubuntu 24.04
         Status("Looking for Ubuntu 24.04...", 6);
         state.Distro = Wsl.FindUbuntu2404();
         if (state.Distro == null)
@@ -750,13 +728,11 @@ class SetupForm : Form
         string script = Product.ResourceText("install.sh");
         var errors = new List<string>();
 
-        // 3. System packages, as root so no Linux password is needed
         Status("Installing OpenFOAM and libraries...", 10);
         int rc = Wsl.Run("-d " + state.Distro + " -u root -- bash -s -- --deps", script, ScriptOutput(10, 60, errors));
         if (cancelRequested) throw new OperationCanceledException();
         if (rc != 0) throw new Exception(errors.Count > 0 ? errors[0] : "Installing packages failed (exit code " + rc + ").");
 
-        // 4. CakeStudio itself, as the normal user
         string args = "--app --version " + Product.Version;
         if (!state.Teno) args += " --no-teno";
         string tarball = Environment.GetEnvironmentVariable("CAKESTUDIO_SETUP_TARBALL");
@@ -765,7 +741,6 @@ class SetupForm : Form
         if (cancelRequested) throw new OperationCanceledException();
         if (rc != 0) throw new Exception(errors.Count > 0 ? errors[0] : "Installing " + Product.Name + " failed (exit code " + rc + ").");
 
-        // 5. Windows launcher, shortcuts and uninstall entry
         Status("Creating shortcuts...", 95);
         InstallWindowsSide();
         SetupState.Clear();
@@ -791,7 +766,6 @@ class SetupForm : Form
             using (var src = Product.Resource(res))
             using (var dst = File.Create(Path.Combine(dir, res)))
                 src.CopyTo(dst);
-        // The launcher reads this to start the right distribution
         File.WriteAllText(Path.Combine(dir, "CakeStudio.distro"), state.Distro);
         Log("Installed launcher to " + dir);
 
@@ -855,7 +829,6 @@ class SetupForm : Form
         base.OnFormClosing(e);
     }
 
-    // Renders every page to PNG files for previews and documentation
     public void SaveScreenshots(string dir)
     {
         Directory.CreateDirectory(dir);
@@ -929,7 +902,6 @@ static class Uninstaller
             MessageBox.Show(Product.Name + " was removed from your computer.", Product.Name + " Uninstall",
                             MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-        // This exe lives in the install folder, so delete the folder after it exits
         Process.Start(new ProcessStartInfo("cmd.exe",
             "/c timeout /t 2 /nobreak >nul & rmdir /s /q \"" + dir + "\"")
             { CreateNoWindow = true, UseShellExecute = false });
@@ -948,7 +920,6 @@ static class Program
         if (mode == "--uninstall") { Uninstaller.Run(args.Length > 1 && args[1] == "--silent"); return; }
         if (mode == "--silent")
         {
-            // Passing --silent means accepting the license, as with other installers
             var f = new SetupForm(new SetupState { Accepted = true }, false);
             string log = Path.Combine(Path.GetTempPath(), "CakeStudioSetup.log");
             Environment.ExitCode = f.RunSilent(args.Length > 1 ? args[1] : log);

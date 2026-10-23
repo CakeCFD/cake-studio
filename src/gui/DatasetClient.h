@@ -34,12 +34,12 @@ struct DatasetInfo {
 };
 
 struct TurbStats {
-    double k       = 0;   // turbulent kinetic energy [m²/s²]
-    double I       = 0;   // turbulence intensity
-    double epsilon = 0;   // dissipation rate estimate [m²/s³]
-    double omega   = 0;   // specific dissipation rate [1/s]
-    double Umag    = 0;   // mean velocity magnitude [m/s]
-    QVector<double> Umean; // mean velocity vector [3 components]
+    double k       = 0;
+    double I       = 0;
+    double epsilon = 0;
+    double omega   = 0;
+    double Umag    = 0;
+    QVector<double> Umean;
 };
 
 class DatasetClient : public QObject {
@@ -57,33 +57,24 @@ public:
 
     void fetchDatasetList();
 
-    // Single-time batch query (SOAP or REST depending on endpoint)
     void queryField(const QString& dataset, const QString& field,
                     double time, const QVector<double>& points);
 
-    // Multi-time range fires sequential requests
     void queryFieldRange(const QString& dataset, const QString& field,
                          const QVector<double>& times,
                          const QVector<double>& points);
 
-    // Cancels the running range job and aborts any in-flight query (single
-    // or range); replies that still arrive afterwards are ignored
     void cancelRange();
 
-    // Custom REST/JSON response parser shared with ApiFormatDialog's Test.
-    // path is dot-separated and numeric segments index arrays ("data.0.items").
-    // keys are per-item component keys, each may be dotted or indexed ("vel.x").
     static QVector<double> parseCustomJson(const QByteArray& raw, const QString& path,
                                            const QStringList& keys,
                                            QString* errOut = nullptr);
 
-    // JHTDB SOAP vocabulary (also used by DatasetPanel's request viewer)
     static QString soapNamespace(const QString& endpoint);
     static QString soapMethod(const QString& field);
     static QString spatialInterpName(SpatialInterp s, const QString& method);
     static QString temporalInterpName(TemporalInterp t);
 
-    // Compute turbulence statistics from spatial velocity samples (3-component)
     static TurbStats computeTurbStats(const QVector<double>& velocities,
                                       double Lref = 1.0,
                                       double Cmu  = 0.09);
@@ -116,14 +107,14 @@ private:
     QByteArray buildGraphQLBody(const QString& field, const QString& dataset,
                                 double time, const QVector<double>& points) const;
     void fireNextRangeStep();
-    bool isSoap()     const;  // true when endpoint looks like a SOAP service (.asmx)
-    bool isGraphQL()  const;  // true when endpoint contains "graphql"
+    bool isSoap()     const;
+    bool isGraphQL()  const;
 
-    void track(QNetworkReply* reply);   // tag with m_generation, remember for abort
+    void track(QNetworkReply* reply);
     void clearRangeJob();
 
     QNetworkAccessManager* m_nam;
-    quint64  m_generation = 0;          // bumped by cancelRange()
+    quint64  m_generation = 0;
     QList<QPointer<QNetworkReply>> m_inflight;
     QString  m_endpoint;
     QString  m_token;
@@ -140,4 +131,4 @@ private:
     RangeJob* m_rangeJob = nullptr;
 };
 
-} // namespace CFD
+}

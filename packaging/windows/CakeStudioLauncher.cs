@@ -19,14 +19,12 @@ static class CakeStudioLauncher
             return 1;
         }
 
-        // Prefer the copy installed by Setup, then a source build in ~/CFD_development
         string appPath = Environment.GetEnvironmentVariable("CAKESTUDIO_PATH");
         string pick = string.IsNullOrEmpty(appPath)
             ? "app=\"$HOME/.local/share/cakestudio/current/bin/CFDStudio\"; " +
               "[ -x \"$app\" ] || app=\"$HOME/CFD_development/build/src/gui/CFDStudio\"; "
             : "app=\"" + appPath + "\"; ";
 
-        // Setup records which WSL distribution it installed into
         string distroArg = "";
         string distroFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CakeStudio.distro");
         if (File.Exists(distroFile))
@@ -46,7 +44,6 @@ static class CakeStudioLauncher
         var psi = new ProcessStartInfo
         {
             FileName = wsl,
-            // Windows argument parsing only understands double quotes, escaped as \"
             Arguments = distroArg + "-e bash -lc \"" + script.Replace("\"", "\\\"") + "\"",
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -65,8 +62,6 @@ static class CakeStudioLauncher
             return 1;
         }
 
-        // A failure to launch shows up within a few seconds; after that the app
-        // is running and the launcher can exit while the app keeps going
         var stderr = proc.StandardError.ReadToEndAsync();
         if (proc.WaitForExit(5000) && proc.ExitCode != 0)
         {

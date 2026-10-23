@@ -26,15 +26,14 @@
 #include <QLabel>
 #include <QPushButton>
 
-// Brace/comment/string-aware scanner for OpenFOAM dictionary text
 namespace OFDict {
 
 struct DictEntry {
-    QString key;           // unquoted keyword, or "#include" etc. for directives
-    int start      = 0;    // first char of the keyword
-    int keyEnd     = 0;    // one past the keyword
-    int end        = 0;    // one past the terminating ';' or '}'
-    int braceOpen  = -1;   // sub-dict entries only
+    QString key;
+    int start      = 0;
+    int keyEnd     = 0;
+    int end        = 0;
+    int braceOpen  = -1;
     int braceClose = -1;
 };
 
@@ -46,14 +45,13 @@ const DictEntry* findEntry(const QList<DictEntry>& entries, const QString& key);
 QString          entryValue(const QString& t, const DictEntry& e);
 QString          lineIndent(const QString& t, int pos);
 
-} // namespace OFDict
+}
 
 struct BCPatch {
     QString name;
     QString type;
     QString value;
     bool    nonUniform = false;
-    // Offsets of the patch dict's '{' and matching '}' in the parsed text
     int     braceOpen  = -1;
     int     braceClose = -1;
 };
@@ -72,7 +70,7 @@ private:
         QString       originalText;
         QTableWidget* table    = nullptr;
         bool          isVector = false;
-        QList<BCPatch> patches;   // as parsed from originalText, one per table row
+        QList<BCPatch> patches;
     };
 
     void            discoverFields();

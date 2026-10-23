@@ -5,7 +5,6 @@ out = sys.argv[1]
 BLUE = (0, 69, 140)
 S = 2                               # draw at 2x for high-DPI screens
 
-
 def triangle(d, cx, top, h, color, width):
     w = h * 27 / 24
     base = top + h
@@ -16,7 +15,6 @@ def triangle(d, cx, top, h, color, width):
         half = (w / 2) * f
         d.line([(cx - half, y), (cx + half, y)], fill=color, width=width)
 
-
 def font(size, bold=False):
     for name in (["segoeuib.ttf", "verdanab.ttf"] if bold else ["segoeui.ttf", "verdana.ttf"]):
         try:
@@ -25,8 +23,6 @@ def font(size, bold=False):
             pass
     return ImageFont.load_default()
 
-
-# Welcome / Finish banner, 164 x 314 logical
 W, H = 164 * S, 314 * S
 img = Image.new('RGB', (W, H))
 px = img.load()
@@ -37,7 +33,6 @@ for y in range(H):
     for x in range(W):
         px[x, y] = c
 d = ImageDraw.Draw(img, 'RGBA')
-# faint streamlines across the lower half
 for k in range(7):
     y0 = H * 0.55 + k * 18 * S
     pts = [(x, y0 + 10 * S * math.sin(x / (38.0 * S) + k * 0.7)) for x in range(0, W + 1, 2)]
@@ -51,7 +46,6 @@ sub = "Computational Fluid Dynamics"
 d.text(((W - d.textlength(sub, font=f2)) / 2, 150 * S), sub, font=f2, fill=(200, 220, 245))
 img.save(out + "/banner.png")
 
-# Header logo for inner pages, 49 x 49 logical, white background
 H2 = 49 * S
 hdr = Image.new('RGB', (H2 * 4, H2 * 4), (255, 255, 255))
 triangle(ImageDraw.Draw(hdr), H2 * 2, H2 * 0.55, H2 * 2.9, BLUE, int(H2 * 0.24))

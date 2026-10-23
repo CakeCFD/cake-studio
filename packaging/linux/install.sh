@@ -45,7 +45,10 @@ done
 is_wsl() { grep -qi microsoft /proc/version 2>/dev/null; }
 
 check_platform() {
-    [ "$(uname -m)" = "x86_64" ] || fail "CakeStudio needs a 64-bit x86 machine (found $(uname -m))."
+    case "$(uname -m)" in
+        x86_64|aarch64) ;;
+        *) fail "Prebuilt packages exist for x86_64 and aarch64 only (found $(uname -m)). Build from source: https://github.com/${REPO}" ;;
+    esac
     [ -r /etc/os-release ] || fail "Cannot read /etc/os-release."
     # Subshell because os-release defines VERSION, which would clobber ours
     local os; os="$(. /etc/os-release; echo "${ID:-}|${VERSION_ID:-}|${PRETTY_NAME:-unknown}")"
@@ -54,7 +57,6 @@ check_platform() {
     fi
 }
 
-# Runtime libraries of the prebuilt binaries, plus OpenFOAM to run the solvers
 PACKAGES=(
     curl ca-certificates
     libqt5core5t64 libqt5gui5t64 libqt5widgets5t64 libqt5network5t64
@@ -99,7 +101,6 @@ latest_version() {
 
 install_app() {
     [ "$(id -u)" -ne 0 ] || fail "Install CakeStudio as your normal user, not root."
-    # Global because the EXIT trap runs after this function has returned
     TMP_DIR="$(mktemp -d)"
     trap 'rm -rf "$TMP_DIR"' EXIT
     local tmp="$TMP_DIR"
@@ -109,7 +110,7 @@ install_app() {
         progress 62
         [ -n "$VERSION" ] || VERSION="$(latest_version)"
         [ -n "$VERSION" ] || fail "Could not find a CakeStudio release on GitHub."
-        local name="cakestudio-${VERSION}-ubuntu24.04-x86_64.tar.gz"
+        local name="cakestudio-${VERSION}-ubuntu24.04-$(uname -m).tar.gz"
         step "Downloading CakeStudio ${VERSION}"
         progress 65
         curl -fL --retry 3 -o "$tmp/$name" \
@@ -138,15 +139,15 @@ install_app() {
     if [ "$WITH_TENO" -eq 1 ]; then
     step "Installing the TENO scheme library"
     progress 88
-    local libbin="$HOME/OpenFOAM/${USER:-$(id -un)}-v${OF_VERSION}/platforms/linux64GccDPInt32Opt/lib"
+    local arch=linux64
+    [ "$(uname -m)" = "aarch64" ] && arch=linuxARM64
+    local libbin="$HOME/OpenFOAM/${USER:-$(id -un)}-v${OF_VERSION}/platforms/${arch}GccDPInt32Opt/lib"
     if [ -f "$APP_ROOT/current/lib/libtenoScheme.so" ]; then
         mkdir -p "$libbin"
         cp -f "$APP_ROOT/current/lib/libtenoScheme.so" "$libbin/"
     fi
     fi
 
-    # WSLg already lists .desktop apps in the Windows Start menu, and the Windows
-    # setup makes its own shortcut, so only add a launcher entry on native Linux
     if ! is_wsl; then
         step "Adding CakeStudio to the applications menu"
         local apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"

@@ -30,8 +30,6 @@
 #include <QRegularExpression>
 #include "themes/ThemeEngine.h"
 
-// Double spinbox that shows values in shortest 'g' form (0.0005, 1e-05, 200)
-// so small transient times survive.
 class GDoubleSpinBox : public QDoubleSpinBox {
 public:
     using QDoubleSpinBox::QDoubleSpinBox;
@@ -53,7 +51,7 @@ class SystemConfigPanel : public QWidget {
 public:
     explicit SystemConfigPanel(QWidget* parent = nullptr);
     void setCaseDir(const QString& dir);
-    void refreshControlDict();  // re-reads endTime/writeInterval from disk (no same-case guard)
+    void refreshControlDict();
     void onThemeChanged();
 
 signals:
@@ -65,9 +63,9 @@ public slots:
 private:
     void detect();
     void writeDecomposeParDict();
-    void loadControlDict();          // read endTime/writeInterval into the spinboxes
-    void writeControlDictIfEdited(); // write only values the user changed since the last load
-    void resyncXyz();                // make nx*ny*nz match the core count
+    void loadControlDict();
+    void writeControlDictIfEdited();
+    void resyncXyz();
 
     QString      m_caseDir;
     int          m_physicalCores = 1;
@@ -77,17 +75,15 @@ private:
     QLabel*    m_cpuLabel    = nullptr;
     QLabel*    m_gpuLabel    = nullptr;
     QSpinBox*  m_coresSpin   = nullptr;
-    QComboBox* m_methodCombo = nullptr;  // decomposition method
-    QSpinBox*  m_nx = nullptr, *m_ny = nullptr, *m_nz = nullptr; // simple/hierarchical
+    QComboBox* m_methodCombo = nullptr;
+    QSpinBox*  m_nx = nullptr, *m_ny = nullptr, *m_nz = nullptr;
     QWidget*   m_xyzWidget   = nullptr;
     QCheckBox* m_gpuCheck    = nullptr;
-    QSpinBox*  m_vramSpin    = nullptr;  // % of GPU VRAM to allow (10-100)
-    QLabel*    m_vramMbLbl   = nullptr;  // shows resolved MB
+    QSpinBox*  m_vramSpin    = nullptr;
+    QLabel*    m_vramMbLbl   = nullptr;
     QLabel*    m_statusLbl   = nullptr;
     QDoubleSpinBox* m_stepsSpin  = nullptr;
     QDoubleSpinBox* m_writeEvery = nullptr;
-    // Values last read from or written to controlDict. Anything equal to these was
-    // not edited by the user and must not be written back
     double     m_syncedEndTime       = std::numeric_limits<double>::quiet_NaN();
     double     m_syncedWriteInterval = std::numeric_limits<double>::quiet_NaN();
 
