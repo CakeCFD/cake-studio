@@ -3,7 +3,8 @@ message: "If you use Cake Studio in your work, please cite it as below."
 title: "Cake Studio"
 type: software
 authors:
-  - name: "CakeCFD Contributors"
+  - given-names: "Ayush"
+    family-names: "Sreejith"
 version: 0.1.0
 date-released: 2026-10-22
 license: GPL-3.0-or-later
