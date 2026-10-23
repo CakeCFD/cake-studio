@@ -1,5 +1,7 @@
 # CakeCFD
 
+![Flow particles around a NACA wing](docs/images/gif1.gif)
+
 ## About CakeCFD
 
 CakeCFD is a general purpose computational fluid dynamics platform combining an
@@ -28,11 +30,11 @@ OpenFOAM 2412 backend with custom numerical schemes. TENO (Targeted Essentially
 Non-Oscillatory) convection schemes are provided as a wmake library and are not
 available in stock OpenFOAM.
 
-Verification: the schemes as shipped are upwind-biased and second order. In smooth
-regions they reconstruct from the upwind cell with a least-squares gradient, and
-near steep gradients they use only the upwind stencil, bounded by the neighbouring
-cell values. On smooth linear advection they measure about second order, not the
-fifth and sixth order of the reference formulation. The measurements are
+Verification: the schemes as shipped are upwind-biased and second order. Faces
+are reconstructed from the upwind cell with a least-squares gradient, and near
+steep gradients the result is bounded by the neighbouring cell values. On smooth
+linear advection they measure about second order, matching linearUpwind in
+accuracy, not the fifth and sixth order of the reference formulation. The measurements are
 reproducible with validation/tools/advection_order.py (case VC-001). Work toward the full design order is in progress on the
 teno-kexact-wip branch, where a k-exact upwind-biased reconstruction reaches
 approximately fifth order on the same test.
@@ -60,6 +62,8 @@ residual plot during solver runs, and a solver console with autocompletion, comm
 history and filtered output. A per solver configuration dialog writes the required
 OpenFOAM case files, including fvSchemes, fvSolution and initial fields, from
 values entered in the interface.
+
+![Exporting results with force coefficients and a simulation report](docs/images/image1.png)
 
 ### Dataset manager
 

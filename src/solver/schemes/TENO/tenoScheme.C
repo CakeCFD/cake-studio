@@ -132,8 +132,6 @@ tenoScheme<Type>::correction(
             {
                 const bool fromOwner = (*faceFluxPtr_)[facei] >= 0;
                 const label up = fromOwner ? mesh.owner()[facei] : mesh.neighbour()[facei];
-                const scalar deltaUp = fromOwner ? delta0 : delta1;
-                if (deltaK > 0.5 || deltaUp > 0.5)
                 {
                     const labelList& st = fromOwner ? fd.stencil0 : fd.stencil1;
                     const scalarField& ls = fromOwner ? fd.lsq0 : fd.lsq1;
@@ -145,10 +143,6 @@ tenoScheme<Type>::correction(
                         g += vector(ls[1*n + j], ls[2*n + j], ls[3*n + j])*uj;
                     }
                     tvCmpt = component(vf[up], cmpt) + (g & (fC - mesh.cellCentres()[up]));
-                }
-                else
-                {
-                    tvCmpt = component(vf[up], cmpt);
                 }
                 if (deltaK < 0.5)
                 {
