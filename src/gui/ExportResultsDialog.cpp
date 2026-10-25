@@ -69,7 +69,7 @@ ExportResultsDialog::ExportResultsDialog(const QString& caseDir, QWidget* parent
     auto* outBox = new QGroupBox("Output");
     auto* outForm = new QFormLayout(outBox);
     m_outputDir   = new QLineEdit(caseDir + "/results/exports");
-    auto* browse  = new QPushButton("Browse…");
+    auto* browse  = new QPushButton("Browse...");
     auto* outRow  = new QHBoxLayout;
     outRow->addWidget(m_outputDir, 1);
     outRow->addWidget(browse);
@@ -186,7 +186,7 @@ ExportResultsDialog::ExportResultsDialog(const QString& caseDir, QWidget* parent
     auto* rptBox   = new QGroupBox("Reports output directory");
     auto* rptForm  = new QFormLayout(rptBox);
     m_reportsDir   = new QLineEdit(caseDir + "/results/reports");
-    auto* rptBrowse = new QPushButton("Browse…");
+    auto* rptBrowse = new QPushButton("Browse...");
     auto* rptRow   = new QHBoxLayout;
     rptRow->addWidget(m_reportsDir, 1);
     rptRow->addWidget(rptBrowse);

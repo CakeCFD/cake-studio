@@ -176,6 +176,9 @@ void MainWindow::setupDockPanels() {
     connect(m_console,  &ConsolePanel::resultsReady,  m_caseTree,     &CaseTreePanel::setCaseDir);
     connect(m_sysPanel, &SystemConfigPanel::stepsChanged, m_viewport, &ViewportWidget::setSliderMax);
     connect(m_console,  &ConsolePanel::aboutToRun,        m_sysPanel, &SystemConfigPanel::onApply);
+    connect(m_console,  &ConsolePanel::aboutToRun,        this, [this]() {
+        if (m_viewport) m_viewport->setFlowRenderingBlocked(false);
+    });
     connect(m_console,  &ConsolePanel::caseFilesChanged, this, [this](const QString& cd){
         m_props->showItem(TypeSection, cd, cd);
         m_sysPanel->refreshControlDict();
@@ -443,7 +446,7 @@ void MainWindow::setupMenuBar() {
         }
         m_viewport->loadOFResults(cd);
     });
-    auto* expResAct = resultsMenu->addAction("Export Results…");
+    auto* expResAct = resultsMenu->addAction("Export Results...");
     expResAct->setShortcut(QKeySequence("Ctrl+Shift+E"));
     expResAct->setShortcutContext(Qt::ApplicationShortcut);
     connect(expResAct, &QAction::triggered, this, [this](){
@@ -1006,6 +1009,7 @@ bool MainWindow::loadProject(const QString& path)
     }
 
     if (m_viewport && !caseDir.isEmpty() && QDir(caseDir).exists()) {
+        m_viewport->setFlowRenderingBlocked(true);
         m_viewport->loadOFResults(caseDir);
 
         QJsonObject vp = root["viewport"].toObject();

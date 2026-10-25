@@ -109,6 +109,7 @@ public:
     int         activeTimeStep() const;
     void        setActiveField(const QString& field);
     void        setActiveTimeStep(int step);
+    void        setFlowRenderingBlocked(bool blocked);
     QString     stlPath() const { return m_stlPath; }
     bool        meshHidden() const { return m_btnHideMesh && m_btnHideMesh->isChecked(); }
     void        setMeshHidden(bool hidden);
@@ -190,6 +191,7 @@ private:
     double m_streamProximity  = 0.10;
     int    m_streamDensity    = 256;
     double m_streamTubeScale  = 1.0;
+    bool   m_flowRenderingBlocked = false;
 
     vtkSmartPointer<vtkPolyData>    m_streamPaths;
     vtkSmartPointer<vtkLookupTable> m_streamLut;

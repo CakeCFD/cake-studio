@@ -156,7 +156,7 @@ DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
     geoForm->addRow("File:", new QLabel(QFileInfo(stlPath).fileName(), this));
     if (hasBounds) {
         geoForm->addRow("Extents:", new QLabel(
-            QString("%1 × %2 × %3 m")
+            QString("%1 * %2 * %3 m")
             .arg(m_gx1-m_gx0,0,'f',3).arg(m_gy1-m_gy0,0,'f',3).arg(m_gz1-m_gz0,0,'f',3), this));
         geoForm->addRow("Char. length:", new QLabel(
             QString("%1 m").arg(m_Lc,0,'f',3), this));
@@ -182,13 +182,13 @@ DomainSetupDialog::DomainSetupDialog(const QString& stlPath,
     axisForm->addRow("Angle of attack:", m_aoa);
     root->addWidget(axisBox);
 
-    auto* domBox  = new QGroupBox("Domain Extents  (× char. length)", this);
+    auto* domBox  = new QGroupBox("Domain Extents  (* char. length)", this);
     auto* domForm = new QFormLayout(domBox);
 
     auto mkSpin = [&](double v, double lo, double hi) {
         auto* s = new QDoubleSpinBox(this);
         s->setRange(lo, hi); s->setSingleStep(0.5); s->setValue(v);
-        s->setDecimals(1); s->setSuffix("  ×");
+        s->setDecimals(1); s->setSuffix("  *");
         return s;
     };
     m_upstreamMult   = mkSpin(5.0,  1.0, 50.0);
@@ -276,7 +276,7 @@ void DomainSetupDialog::updatePreview()
         QString suffix = total > 1000000 ? QString("~%1 M").arg(total/1000000.0, 0,'f',1)
                        : total > 1000    ? QString("~%1 k").arg(total/1000)
                        : QString::number(total);
-        m_cellsLabel->setText(QString("%1 × %2 × %3  =  %4").arg(nx).arg(ny).arg(nz).arg(suffix));
+        m_cellsLabel->setText(QString("%1 * %2 * %3  =  %4").arg(nx).arg(ny).arg(nz).arg(suffix));
     }
 
     emit previewChanged(x0, y0, z0, x1, y1, z1,
@@ -301,7 +301,7 @@ void DomainSetupDialog::onGenerate()
 
     if (!failed.isEmpty()) {
         QMessageBox::warning(this, "Write Error",
-            "Could not write:\n\n  • " + failed.join("\n  • "));
+            "Could not write:\n\n  " + failed.join("\n  "));
         return;
     }
 
@@ -377,9 +377,9 @@ void DomainSetupDialog::onGenerate()
 
     auto btn = QMessageBox::question(this, "Files Generated",
         QString("3 mesh configuration files written to:\n%1/system\n\n"
-                "  • blockMeshDict\n"
-                "  • snappyHexMeshDict\n"
-                "  • surfaceFeatureExtractDict\n\n"
+                "  blockMeshDict\n"
+                "  snappyHexMeshDict\n"
+                "  surfaceFeatureExtractDict\n\n"
                 "Flow axis: %2    AoA: %3 °\n\n"
                 "Suggested workflow:\n"
                 "  1. blockMesh\n"

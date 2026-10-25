@@ -57,11 +57,11 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
     m_solverCombo->setToolTip(
         "Sets the OpenFOAM solver and configures fvSchemes accordingly.\n"
         "Thermal solvers also require constant/thermophysicalProperties\n"
-        "(Physics menu → Thermal Properties).");
+        "(Physics menu -> Thermal Properties).");
     solverForm->addRow("Solver:", m_solverCombo);
 
     m_thermalNote = new QLabel(
-        "Thermal solver: also configure Physics → Thermal Properties");
+        "Thermal solver: also configure Physics -> Thermal Properties");
     m_thermalNote->setStyleSheet("font-size: 11px;");
     ThemeEngine::setRole(m_thermalNote, "warnText");
     m_thermalNote->setWordWrap(true);
@@ -203,9 +203,9 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
         if (isTeno && isLES()) {
             QMessageBox::warning(this, "TENO + LES Warning",
                 "TENO5/TENO6 with LES is supported but extremely demanding:\n\n"
-                "  • CFL < 0.2  (deltaT ~1e-6 for flight-scale cases)\n"
-                "  • y⁺ < 1 required across the entire surface\n"
-                "  • Cell count typically 50-100× a RANS mesh\n\n"
+                "  CFL < 0.2  (deltaT ~1e-6 for flight-scale cases)\n"
+                "  y⁺ < 1 required across the entire surface\n"
+                "  Cell count typically 50-100* a RANS mesh\n\n"
                 "For external aerodynamics, TENO + RANS (simpleFoam) gives the\n"
                 "accuracy benefit of high-order convection at a practical cost.");
         }
@@ -221,9 +221,9 @@ PhysicsPanel::PhysicsPanel(const QString& caseDir, QWidget* parent)
         if (idx == 1 && isTeno) {
             QMessageBox::warning(this, "TENO + LES Warning",
                 "TENO5/TENO6 with LES is supported but extremely demanding:\n\n"
-                "  • CFL < 0.2  (deltaT ~1e-6 for flight-scale cases)\n"
-                "  • y⁺ < 1 required across the entire surface\n"
-                "  • Cell count typically 50-100× a RANS mesh\n\n"
+                "  CFL < 0.2  (deltaT ~1e-6 for flight-scale cases)\n"
+                "  y⁺ < 1 required across the entire surface\n"
+                "  Cell count typically 50-100* a RANS mesh\n\n"
                 "RANS + TENO gives the same high-order accuracy benefit at\n"
                 "a fraction of the cost for external aero.");
         }

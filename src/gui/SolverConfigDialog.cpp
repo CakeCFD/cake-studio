@@ -269,7 +269,7 @@ void SolverConfigDialog::buildCompressibleGroup(QVBoxLayout* vb)
         m_molWeight = dblSpin(1,   300,  28.97, 3, "g/mol");
         m_cp        = dblSpin(1,   1e5,  1005,  1, "J/kg/K");
         m_hf        = dblSpin(-1e8,1e8,  0,     1, "J/kg");
-        m_mu        = dblSpin(1e-9,1,    1.8e-5,8, "Pa·s");
+        m_mu        = dblSpin(1e-9,1,    1.8e-5,8, "Pa * s");
         m_pr        = dblSpin(0.01,100,  0.713, 4);
         form->addRow("Molecular weight:", m_molWeight);
         form->addRow("Cp:", m_cp);

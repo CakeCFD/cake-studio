@@ -249,9 +249,9 @@ if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else PORT
     server = HTTPServer(('0.0.0.0', port), Handler)
     print(f"Mock turbulence server running on http://localhost:{port}/")
-    print(f"  SOAP endpoint  →  http://localhost:{port}{SOAP_PATH}")
-    print(f"  Dataset list   →  http://localhost:{port}/datasets")
-    print(f"  Custom query   →  http://localhost:{port}/query  (POST JSON; endpoint http://localhost:{port})")
+    print(f"  SOAP endpoint  ->  http://localhost:{port}{SOAP_PATH}")
+    print(f"  Dataset list   ->  http://localhost:{port}/datasets")
+    print(f"  Custom query   ->  http://localhost:{port}/query  (POST JSON; endpoint http://localhost:{port})")
     print("Press Ctrl-C to stop.\n")
     try:
         server.serve_forever()
