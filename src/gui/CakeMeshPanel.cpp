@@ -255,8 +255,8 @@ void CakeMeshPanel::buildGeometryTab(QTabWidget* tabs)
 
     auto* row    = new QHBoxLayout;
     m_geoPath    = new QLineEdit;
-    m_geoPath->setPlaceholderText("Path to STEP / IGES / BREP / STL file…");
-    auto* browse = new QPushButton("Browse…");
+    m_geoPath->setPlaceholderText("Path to STEP / IGES / BREP / STL file...");
+    auto* browse = new QPushButton("Browse...");
     auto* load   = new QPushButton("Load");
     row->addWidget(m_geoPath, 1);
     row->addWidget(browse);
@@ -289,7 +289,7 @@ void CakeMeshPanel::buildMeshTab(QTabWidget* tabs)
     auto* bgForm = new QFormLayout(bgBox);
     m_padding = dbl(2.0, 0.1, 20.0, 0.5, 2);
     m_bgCells = isp(20, 5, 200);
-    bgForm->addRow("Domain padding (×bbox):", m_padding);
+    bgForm->addRow("Domain padding (*bbox):", m_padding);
     bgForm->addRow("Background cells / axis:", m_bgCells);
 
     auto* refBox  = new QGroupBox("Surface Refinement");
@@ -371,7 +371,7 @@ void CakeMeshPanel::buildPhysicsTab(QTabWidget* tabs)
     m_caseName  = new QLineEdit("cfdCase");
     m_outputDir = new QLineEdit;
     m_outputDir->setPlaceholderText("/home/user/cfd_runs");
-    auto* outBrowse = new QPushButton("Browse…");
+    auto* outBrowse = new QPushButton("Browse...");
     auto* outRow    = new QHBoxLayout;
     outRow->addWidget(m_outputDir, 1);
     outRow->addWidget(outBrowse);
@@ -511,8 +511,8 @@ void CakeMeshPanel::onLoadGeometry()
     QString path = m_geoPath->text().trimmed();
     if (path.isEmpty()) { log("No file selected."); return; }
 
-    m_status->setText("Loading geometry…");
-    m_geoStats->setText("Loading…");
+    m_status->setText("Loading geometry...");
+    m_geoStats->setText("Loading...");
     QApplication::processEvents();
 
     auto geo = CFD::CADGeometry::fromFile(path);
@@ -570,7 +570,7 @@ void CakeMeshPanel::onGenerateCase()
     }
 
     setRunning(true);
-    m_status->setText("Generating case…");
+    m_status->setText("Generating case...");
 
     static const QMap<QString,CFD::TurbulenceModel> turbs = {
         {"laminar",         CFD::TurbulenceModel::Laminar},

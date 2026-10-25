@@ -195,10 +195,10 @@ void PropertiesPanel::buildBlankUI()
 
     struct TipItem { const char* label; const char* desc; };
     static const TipItem tips[] = {
-        { "Case",       "endTime · solver · turbulence model" },
-        { "Geometry",   "bounding box · triangle count · domain setup" },
-        { "Mesh",       "quality · cell count · boundary patches" },
-        { "Results",    "fields · residuals · force coefficients" },
+        { "Case",       "endTime, solver, turbulence model" },
+        { "Geometry",   "bounding box, triangle count, domain setup" },
+        { "Mesh",       "quality, cell count, boundary patches" },
+        { "Results",    "fields, residuals, force coefficients" },
         { "Dict files", "editable key-value entries with live write-back" },
     };
     for (auto& tip : tips) {
@@ -451,7 +451,7 @@ void PropertiesPanel::populateMesh(const QString& caseDir)
         bool badSkew     = skewness > 4.0;
         bool meshOk = log.contains("Mesh OK") || log.contains("No errors");
         if (meshOk && !badNonOrtho && !badSkew)
-            addBadge("✓  Mesh OK", true);
+            addBadge("Mesh OK", true);
         else if (!meshOk)
             addBadge("✗  Mesh has errors: check log.checkMesh", false);
         else
@@ -518,7 +518,7 @@ void PropertiesPanel::populateGeo(const QString& path, const QString& caseDir)
                 addRow("X", QString("[%1,  %2]").arg(xmin,0,'f',4).arg(xmax,0,'f',4));
                 addRow("Y", QString("[%1,  %2]").arg(ymin,0,'f',4).arg(ymax,0,'f',4));
                 addRow("Z", QString("[%1,  %2]").arg(zmin,0,'f',4).arg(zmax,0,'f',4));
-                addRow("Extents", QString("%1 × %2 × %3 m")
+                addRow("Extents", QString("%1 * %2 * %3 m")
                     .arg(xmax-xmin,0,'f',4).arg(ymax-ymin,0,'f',4).arg(zmax-zmin,0,'f',4));
             }
         } else {
@@ -530,7 +530,7 @@ void PropertiesPanel::populateGeo(const QString& path, const QString& caseDir)
         if (!caseDir.isEmpty()) {
             QString stlPath = path;
             QString cd      = caseDir;
-            addButton("Setup Aerodynamic Domain →", [stlPath, cd, this]() {
+            addButton("Setup Aerodynamic Domain ->", [stlPath, cd, this]() {
                 auto* dlg = new DomainSetupDialog(stlPath, cd, this);
                 connect(dlg, &DomainSetupDialog::loadRequested,
                         this, &PropertiesPanel::loadDomainRequested);

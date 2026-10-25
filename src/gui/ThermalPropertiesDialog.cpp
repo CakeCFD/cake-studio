@@ -103,7 +103,7 @@ ThermalPropertiesDialog::ThermalPropertiesDialog(const QString& caseDir, QWidget
     m_molWeight = makeSpin(1, 300, 28.9, 3, "g/mol");
     m_cp        = makeSpin(1, 1e5, 1005, 1, "J/kg/K");
     m_hf        = makeSpin(-1e8, 1e8, 0,  1, "J/kg");
-    m_mu        = makeSpin(1e-9, 1,   1.8e-5, 8, "Pa·s");
+    m_mu        = makeSpin(1e-9, 1,   1.8e-5, 8, "Pa * s");
     m_pr        = makeSpin(0.01, 100, 0.713,  4);
 
     mixForm->addRow("Molecular weight:", m_molWeight);

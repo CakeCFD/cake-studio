@@ -528,6 +528,12 @@ void ViewportWidget::toggleIsoSurface(bool on)
 
 void ViewportWidget::toggleStreamlines(bool on)
 {
+    if (m_flowRenderingBlocked) {
+        m_streamActor->VisibilityOff();
+        m_vtkWidget->renderWindow()->Render();
+        return;
+    }
+
     if (on) {
         auto emptyMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         emptyMapper->SetInputData(vtkSmartPointer<vtkPolyData>::New());
@@ -1344,6 +1350,27 @@ void ViewportWidget::setActiveField(const QString& field)
 void ViewportWidget::setActiveTimeStep(int step)
 {
     if (m_timeSlider) m_timeSlider->setValue(step);
+}
+
+void ViewportWidget::setFlowRenderingBlocked(bool blocked)
+{
+    m_flowRenderingBlocked = blocked;
+    if (!blocked) {
+        if (m_btnStream) m_btnStream->setEnabled(true);
+        return;
+    }
+
+    // This is so that the user doesnt get annoyed at the cached streamlines.
+    auto emptyStreamMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    emptyStreamMapper->SetInputData(vtkSmartPointer<vtkPolyData>::New());
+    m_streamActor->SetMapper(emptyStreamMapper);
+    m_streamActor->VisibilityOff();
+    if (m_btnStream) {
+        QSignalBlocker blocker(m_btnStream);
+        m_btnStream->setChecked(false);
+        m_btnStream->setEnabled(false);
+    }
+    m_vtkWidget->renderWindow()->Render();
 }
 
 void ViewportWidget::clearScene()

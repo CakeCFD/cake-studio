@@ -128,7 +128,7 @@ FileBrowserDialog::FileBrowserDialog(Mode mode, const QString& startDir,
     if (mode == SaveFile) {
         bottomRow->addWidget(new QLabel("Name:"));
         m_nameEdit = new QLineEdit;
-        m_nameEdit->setPlaceholderText("Enter filename…");
+        m_nameEdit->setPlaceholderText("Enter filename...");
         bottomRow->addWidget(m_nameEdit, 1);
     } else {
         m_nameEdit = nullptr;
