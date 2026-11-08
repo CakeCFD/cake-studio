@@ -32,7 +32,8 @@ set(SOURCES
     SystemConfigPanel.cpp
     ThermalPropertiesDialog.cpp
     SolverConfigDialog.cpp
-    themes/ThemeEngine.cpp)
+    themes/ThemeEngine.cpp
+    resources.qrc)
 
 set(HEADERS
     MainWindow.h

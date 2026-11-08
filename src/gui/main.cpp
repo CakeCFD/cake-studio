@@ -20,6 +20,7 @@
 #include <QApplication>
 #include <QSurfaceFormat>
 #include <QFile>
+#include <QIcon>
 #include <unistd.h>
 #include "MainWindow.h"
 #include "themes/ThemeEngine.h"
@@ -50,6 +51,7 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("Cake Studio");
     app.setOrganizationName("CFDStudio");
+    app.setWindowIcon(QIcon(":/icons/cakestudio.ico"));
 
     ThemeEngine::instance().apply(Theme::Graphite, app);
 
