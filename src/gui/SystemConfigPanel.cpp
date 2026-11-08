@@ -34,6 +34,7 @@
 #include <QSettings>
 #include <QFontMetrics>
 #include <QSizePolicy>
+#include <QScrollArea>
 
 static bool writeDictVal(const QString& path, const QString& key, const QString& value);
 
@@ -51,11 +52,20 @@ SystemConfigPanel::SystemConfigPanel(QWidget* parent) : QWidget(parent)
     setFixedHeight(52);
 
     auto* outer = new QHBoxLayout(this);
-    outer->setContentsMargins(8, 6, 8, 6);
+    outer->setContentsMargins(8, 3, 8, 3);
+
+    // Scroll sideways on narrow windows instead of forcing the main window wider than the screen
+    auto* scroll = new QScrollArea;
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }");
+    outer->addWidget(scroll);
 
     m_block = new QFrame;
     m_block->setFrameShape(QFrame::NoFrame);
-    outer->addWidget(m_block);
+    scroll->setWidget(m_block);
 
     auto* lay = new QHBoxLayout(m_block);
     lay->setContentsMargins(12, 4, 12, 4);
