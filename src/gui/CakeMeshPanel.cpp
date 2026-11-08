@@ -139,14 +139,20 @@ CakeMeshPanel::CakeMeshPanel(QWidget* parent) : QWidget(parent)
     auto* copyErrBtn  = makeCopyBtn("✕ Copy Errors",   "copyErr",
                                     {"Error", "ERROR", "FATAL", "FAILED", "error:", "fatal"});
 
-    auto* bar = new QHBoxLayout;
-    bar->addWidget(m_status, 1);
-    bar->addWidget(copyWarnBtn);
-    bar->addWidget(copyErrBtn);
-    bar->addWidget(m_btnGenerate);
-    bar->addWidget(m_btnRunMesh);
-    bar->addWidget(m_btnExport);
-    root->addLayout(bar);
+    // Two rows so the panel can be resized narrower than all six controls side by side
+    m_status->setWordWrap(true);
+    auto* statusRow = new QHBoxLayout;
+    statusRow->addWidget(m_status, 1);
+    statusRow->addWidget(copyWarnBtn);
+    statusRow->addWidget(copyErrBtn);
+    root->addLayout(statusRow);
+
+    auto* actionRow = new QHBoxLayout;
+    actionRow->addStretch(1);
+    actionRow->addWidget(m_btnGenerate);
+    actionRow->addWidget(m_btnRunMesh);
+    actionRow->addWidget(m_btnExport);
+    root->addLayout(actionRow);
 
     connect(m_btnGenerate, &QPushButton::clicked, this, &CakeMeshPanel::onGenerateCase);
     connect(m_btnRunMesh,  &QPushButton::clicked, this, &CakeMeshPanel::onRunMesh);
