@@ -72,7 +72,9 @@ static QDockWidget* makeDock(const QString& title, const QString& objName,
     dock->setObjectName(objName);
     dock->setAllowedAreas(areas);
     dock->setWidget(widget);
-    dock->setFeatures(QDockWidget::DockWidgetClosable);
+    dock->setFeatures(QDockWidget::DockWidgetClosable |
+                      QDockWidget::DockWidgetMovable |
+                      QDockWidget::DockWidgetFloatable);
     dock->setStyleSheet(
         "QDockWidget::title { padding: 4px 6px; font-size: 11px; font-weight: bold; }"
         "QDockWidget::close-button { padding: 2px; }");
@@ -716,6 +718,11 @@ void MainWindow::setMode(AppMode mode)
     }
 
     m_viewportStack->setCurrentIndex(studio ? 0 : 1);
+    // A stack takes the largest minimum of all pages, so hidden pages must not count
+    for (int i = 0; i < m_viewportStack->count(); ++i) {
+        const auto pol = (i == m_viewportStack->currentIndex()) ? QSizePolicy::Preferred : QSizePolicy::Ignored;
+        m_viewportStack->widget(i)->setSizePolicy(pol, pol);
+    }
 
     m_caseDock->setVisible(studio);
     m_propDock->setVisible(studio);
