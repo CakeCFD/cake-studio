@@ -30,6 +30,10 @@ int main(int argc, char* argv[]) {
         qputenv("GALLIUM_DRIVER", "d3d12");
         execv("/proc/self/exe", argv);
     }
+    // VTK's GLEW loader needs GLX, so use XWayland instead of the native Wayland plugin
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM") && !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY"))
+        qputenv("QT_QPA_PLATFORM", "xcb");
+
     QSurfaceFormat fmt;
     fmt.setVersion(3, 2);
     fmt.setProfile(QSurfaceFormat::CoreProfile);
@@ -38,6 +42,10 @@ int main(int argc, char* argv[]) {
     fmt.setStencilBufferSize(0);
     fmt.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
     QSurfaceFormat::setDefaultFormat(fmt);
+
+    // Follow the desktop scale on X11 too, otherwise HiDPI screens render at 1x
+    QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
 
     QApplication app(argc, argv);
     app.setApplicationName("Cake Studio");
